@@ -17,10 +17,11 @@ export default function AdminLogin() {
 
     try {
       // ✅ ၁။ Backend API ကို အမှန်တကယ် ခေါ်ယူအသုံးပြုခြင်း
-      const response = await axios.post('http://localhost:5000/api/admin/login', {
-        username,
-        password
-      });
+      // ✅ မှန်ကန်သော ပုံစံ
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}/admin/login`, 
+          { username, password }
+      );
 
       // ✅ ၂။ Backend က ပြန်ပို့တဲ့ Token ရှိမရှိ စစ်ဆေးခြင်း
       if (response.data && response.data.token) {
