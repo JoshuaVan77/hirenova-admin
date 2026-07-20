@@ -1,27 +1,23 @@
 import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
-import io from 'socket.io-client';
 import { Send, MessageCircle, User, RefreshCw, AlertCircle } from 'lucide-react';
 import { useChat } from '../context/ChatContext';
 
 // ✅ 1. Dynamic URLs (Production Ready)
+// VITE_API_URL တွင် "/api" မပါဝင်ရပါ။ (ဥပမာ: https://...railway.app)
 const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
 const API_URL = `${BASE_URL}/api/chat`;
-const SOCKET_URL = BASE_URL; // Socket.io connects to the base URL
-
-// ✅ Initialize Socket with base URL
-const socket = io(SOCKET_URL, {
-  transports: ['websocket', 'polling']
-});
 
 export default function LiveChat() {
-  const { resetUnreadCount } = useChat();
+  // ✅ ChatContext ထဲက socket နဲ့ functions တွေကို တိုက်ရိုက်ယူသုံးပါ
+  const { resetUnreadCount, socket } = useChat();
+  
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState(null); // ✅ UI Feedback State
+  const [error, setError] = useState(null);
   const messagesEndRef = useRef(null);
 
   // ✅ 2. Helper function to get Auth Headers
@@ -54,6 +50,8 @@ export default function LiveChat() {
       console.error('Error fetching conversations:', error);
       if (error.response?.status === 401) {
         setError('Session expired. Please login again.');
+      } else if (error.response?.status === 404) {
+        setError('API endpoint not found. Please check VITE_API_URL in Vercel settings.');
       } else {
         setError('Failed to load conversations.');
       }
@@ -62,17 +60,14 @@ export default function LiveChat() {
 
   useEffect(() => {
     fetchConversations();
-    socket.emit('join_admin_room');
 
+    // ✅ Socket listener ကို ChatContext မှာ already ရှိနေပေမယ့်, 
+    // specific conversation အတွက် messages update လုပ်ဖို့ ဒီမှာ ထပ်ထည့်ထားပါတယ်
     const handleNewMessage = (data) => {
-      fetchConversations(); // Refresh conversation list to update last message & unread count
-      
+      fetchConversations(); 
       if (selectedConversation && selectedConversation.id === data.userId) {
         setMessages(prev => {
-          // Prevent duplicate messages
           if (prev.some(m => m.id === data.message.id)) return prev;
-          
-          // ✅ 3. Map backend response (sender_type, content) to frontend format
           return [...prev, {
             id: data.message.id,
             sender_type: data.message.sender_type,
@@ -88,7 +83,7 @@ export default function LiveChat() {
     return () => {
       socket.off('new_message', handleNewMessage);
     };
-  }, [selectedConversation]);
+  }, [selectedConversation, socket]);
 
   const fetchMessages = async (userId) => {
     try {
@@ -96,9 +91,7 @@ export default function LiveChat() {
       const response = await axios.get(`${API_URL}/messages/${userId}`, getAuthHeaders());
       setMessages(response.data.messages || []);
       
-      // ✅ Backend ကို mark as read လုပ်ခိုင်းမယ်
       await axios.post(`${API_URL}/mark-read`, { userId }, getAuthHeaders());
-      
     } catch (error) {
       console.error('Error fetching messages:', error);
       setError('Failed to load messages.');
@@ -107,11 +100,7 @@ export default function LiveChat() {
 
   const handleSelectConversation = (conv) => {
     resetUnreadCount();
-    
-    setConversations(prev => 
-      prev.map(c => c.id === conv.id ? { ...c, unread: 0 } : c)
-    );
-    
+    setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread: 0 } : c));
     setSelectedConversation(conv);
     fetchMessages(conv.id);
   };
@@ -128,7 +117,6 @@ export default function LiveChat() {
     e.preventDefault();
     if (!message.trim() || !selectedConversation) return;
 
-    // ✅ Optimistic UI update
     const tempMsg = { 
       id: Date.now(), 
       sender_type: 'admin', 
@@ -139,14 +127,9 @@ export default function LiveChat() {
     setMessage('');
 
     try {
-      await axios.post(
-        `${API_URL}/reply`, 
-        { userId: selectedConversation.id, message: message }, 
-        getAuthHeaders()
-      );
+      await axios.post(`${API_URL}/reply`, { userId: selectedConversation.id, message: message }, getAuthHeaders());
     } catch (error) {
       console.error('Error sending reply:', error);
-      // Rollback optimistic update on failure
       setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
       setError('Failed to send message. Please try again.');
     }
@@ -158,7 +141,6 @@ export default function LiveChat() {
     <div className="w-full h-full flex flex-col">
       <h2 className="text-2xl font-bold text-white mb-4">Live Chat Support</h2>
       
-      {/* ✅ Error Message Display */}
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg flex items-center gap-2 mb-4">
           <AlertCircle className="h-5 w-5 flex-shrink-0" /> {error}
@@ -166,7 +148,6 @@ export default function LiveChat() {
       )}
       
       <div className="flex flex-1 bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
-        
         {/* 1. Conversations List */}
         <div className="w-72 border-r border-gray-800 flex flex-col bg-dark-bg flex-shrink-0">
           <div className="p-3 border-b border-gray-800 flex justify-between items-center">
@@ -230,7 +211,6 @@ export default function LiveChat() {
                 {messages.map((msg) => (
                   <div key={msg.id} className={`flex ${msg.sender_type === 'admin' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[70%] rounded-xl px-3 py-2 ${msg.sender_type === 'admin' ? 'bg-brand-primary text-white' : 'bg-gray-800 text-gray-200'}`}>
-                      {/* ✅ 4. Use 'content' instead of 'message' */}
                       {msg.content && <p className="text-sm">{msg.content}</p>}
                       <p className="text-[10px] mt-1 text-right opacity-70">
                         {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
