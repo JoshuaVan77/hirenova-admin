@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Plus, Edit2, Trash2, RefreshCw, Image as ImageIcon } from 'lucide-react';
+import { Plus, Edit2, Trash2, RefreshCw, Image as ImageIcon, AlertCircle, CheckCircle, Power } from 'lucide-react';
 
-const API_URL = 'http://localhost:5000/api/admin';
+// ✅ 1. Dynamic API URL (Production Ready)
+const API_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
 
 export default function TaskManagement() {
   const [tasks, setTasks] = useState([]);
@@ -18,12 +19,33 @@ export default function TaskManagement() {
     commission: ''
   });
 
+  // ✅ 2. UI Feedback States
+  const [error, setError] = useState(null);
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // ✅ 3. Helper function to get Auth Headers
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('adminToken');
+    return {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+  };
+
   const fetchTasks = async () => {
     try {
-      const response = await axios.get(`${API_URL}/tasks`);
-      setTasks(response.data.tasks);
+      setError(null);
+      const response = await axios.get(`${API_URL}/admin/tasks`, getAuthHeaders());
+      setTasks(response.data.tasks || []);
     } catch (error) {
       console.error('Error fetching tasks:', error);
+      if (error.response?.status === 401) {
+        setError('Session expired. Please login again.');
+      } else {
+        setError('Failed to load tasks.');
+      }
     } finally {
       setLoading(false);
     }
@@ -35,16 +57,18 @@ export default function TaskManagement() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
+    setError(null);
     await fetchTasks();
     setTimeout(() => setIsRefreshing(false), 800);
   };
 
   const handleOpenModal = (task = null) => {
+    setError(null);
     if (task) {
       setEditingTask(task);
       setFormData({
         hotel_name: task.hotel_name,
-        hotel_image: task.hotel_image,
+        hotel_image: task.hotel_image || '',
         description: task.description || '',
         order_amount: task.order_amount,
         commission: task.commission
@@ -64,34 +88,79 @@ export default function TaskManagement() {
 
   const handleSubmit = async () => {
     try {
+      setError(null);
       if (editingTask) {
-        await axios.put(`${API_URL}/tasks/${editingTask.id}`, formData);
-        alert('Task updated successfully!');
+        await axios.put(`${API_URL}/admin/tasks/${editingTask.id}`, formData, getAuthHeaders());
+        setSuccessMsg('Task updated successfully!');
       } else {
-        await axios.post(`${API_URL}/tasks`, formData);
-        alert('Task created successfully!');
+        await axios.post(`${API_URL}/admin/tasks`, formData, getAuthHeaders());
+        setSuccessMsg('Task created successfully!');
       }
       setShowModal(false);
       fetchTasks();
+      setTimeout(() => setSuccessMsg(''), 3000);
     } catch (error) {
-      alert(error.response?.data?.message || 'Failed to save task');
+      console.error('Save error:', error);
+      setError(error.response?.data?.message || 'Failed to save task.');
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this task?')) return;
+    if (!window.confirm('Are you sure you want to delete this task? This action cannot be undone.')) return;
     try {
-      await axios.delete(`${API_URL}/tasks/${id}`);
+      setError(null);
+      await axios.delete(`${API_URL}/admin/tasks/${id}`, getAuthHeaders());
+      setSuccessMsg('Task deleted successfully!');
       fetchTasks();
+      setTimeout(() => setSuccessMsg(''), 3000);
     } catch (error) {
-      alert('Failed to delete task');
+      console.error('Delete error:', error);
+      setError('Failed to delete task.');
     }
   };
 
-  if (loading) return <div className="p-8 text-center text-gray-400">Loading tasks...</div>;
+  // ✅ 4. Added Toggle Status Function (Matches Backend)
+  const handleToggleStatus = async (id, currentStatus) => {
+    try {
+      setError(null);
+      await axios.patch(
+        `${API_URL}/admin/tasks/${id}/status`, 
+        { is_active: currentStatus === 1 ? 0 : 1 }, 
+        getAuthHeaders()
+      );
+      setSuccessMsg('Task status updated successfully!');
+      fetchTasks();
+      setTimeout(() => setSuccessMsg(''), 3000);
+    } catch (error) {
+      console.error('Toggle error:', error);
+      setError('Failed to update task status.');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-gray-400 flex items-center gap-2">
+          <RefreshCw className="h-6 w-6 animate-spin" /> Loading tasks...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      {/* ✅ Error & Success Messages */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 flex-shrink-0" /> {error}
+        </div>
+      )}
+      {successMsg && (
+        <div className="bg-green-500/10 border border-green-500/20 text-green-400 px-4 py-3 rounded-lg flex items-center gap-2">
+          <CheckCircle className="h-5 w-5 flex-shrink-0" /> {successMsg}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-white">Task Management</h2>
@@ -150,7 +219,7 @@ export default function TaskManagement() {
                         <img 
                           src={task.hotel_image} 
                           alt={task.hotel_name}
-                          className="w-12 h-12 rounded-lg object-cover"
+                          className="w-12 h-12 rounded-lg object-cover border border-gray-700"
                         />
                       ) : (
                         <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center">
@@ -160,8 +229,8 @@ export default function TaskManagement() {
                     </td>
                     <td className="px-6 py-4 font-medium text-white">{task.hotel_name}</td>
                     <td className="px-6 py-4 max-w-xs truncate">{task.description || '-'}</td>
-                    <td className="px-6 py-4 text-blue-400">${parseFloat(task.order_amount).toFixed(2)}</td>
-                    <td className="px-6 py-4 text-green-400 font-bold">+${parseFloat(task.commission).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-blue-400">${parseFloat(task.order_amount || 0).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-green-400 font-bold">+${parseFloat(task.commission || 0).toFixed(2)}</td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                         task.is_active === 1 
@@ -173,6 +242,18 @@ export default function TaskManagement() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {/* ✅ Toggle Status Button */}
+                        <button 
+                          onClick={() => handleToggleStatus(task.id, task.is_active)}
+                          className={`p-2 rounded-lg transition-colors ${
+                            task.is_active === 1 
+                              ? 'text-yellow-400 hover:bg-yellow-500/10' 
+                              : 'text-green-400 hover:bg-green-500/10'
+                          }`}
+                          title={task.is_active === 1 ? 'Deactivate Task' : 'Activate Task'}
+                        >
+                          <Power className="h-4 w-4" />
+                        </button>
                         <button 
                           onClick={() => handleOpenModal(task)}
                           className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
@@ -241,7 +322,7 @@ export default function TaskManagement() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">Order Amount (USDT) *</label>
                   <input
@@ -271,7 +352,7 @@ export default function TaskManagement() {
 
             <div className="flex gap-3">
               <button 
-                onClick={() => setShowModal(false)} 
+                onClick={() => { setShowModal(false); setError(''); }} 
                 className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition-colors"
               >
                 Cancel
