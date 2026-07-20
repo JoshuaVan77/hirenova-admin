@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ChatProvider } from './context/ChatContext'; // ✅ ChatProvider ကို Import လုပ်ပါ
+import { ChatProvider } from './context/ChatContext'; 
 
 import AdminLogin from './pages/AdminLogin';
 import Dashboard from './pages/Dashboard';
@@ -14,7 +14,27 @@ import LiveChat from './pages/LiveChat';
 import Settings from './pages/Settings';
 import LuckyOrders from './pages/LuckyOrders';
 
-// Admin Layout (Sidebar + Header ပါတဲ့ Page တွေအတွက်)
+// ==========================================
+// ✅ Protected Route Component (Production)
+// Token မရှိရင် Login page ကို အလိုအလျောက် ပြန်ပို့ပါမယ်
+// ==========================================
+const ProtectedRoute = ({ children }) => {
+  // ⚠️ သင့် Login page မှာ Token ကို ဘယ်နာမည်နဲ့ သိမ်းလဲဆိုတာ အောက်ပါအတိုင်း စစ်ဆေးပါ:
+  // - 'adminToken' လား
+  // - 'token' လား  
+  // - 'hirenova_admin_token' လား
+  const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+  
+  if (!token) {
+    return <Navigate to="/admin/login" replace />;
+  }
+  
+  return children;
+};
+
+// ==========================================
+// Admin Layout Component
+// ==========================================
 const AdminLayout = ({ children }) => (
   <div className="flex h-screen bg-dark-bg overflow-hidden">
     <Sidebar />
@@ -29,27 +49,91 @@ const AdminLayout = ({ children }) => (
 
 function App() {
   return (
-    // ✅ တစ်ခုလုံးကို ChatProvider နဲ့ Wrap လုပ်ထားပါတယ်
     <ChatProvider>
       <Router>
         <Routes>
-          {/* Default Route */}
+          {/* 1. Default Route */}
           <Route path="/" element={<Navigate to="/admin/login" replace />} />
+          
+          {/* 2. Public Route - Login */}
           <Route path="/admin/login" element={<AdminLogin />} />
           
-          {/* Admin Protected Routes (Sidebar နဲ့ Header ပါဝင်သော Routes များ) */}
-          <Route path="/admin/dashboard" element={<AdminLayout><Dashboard /></AdminLayout>} />
-          <Route path="/admin/users" element={<AdminLayout><UserManagement /></AdminLayout>} />
-          <Route path="/admin/topup" element={<AdminLayout><TopupRequests /></AdminLayout>} />
-          <Route path="/admin/withdraw" element={<AdminLayout><WithdrawRequests /></AdminLayout>} />
-          <Route path="/admin/tasks" element={<AdminLayout><TaskManagement /></AdminLayout>} />
-          <Route path="/admin/invite" element={<AdminLayout><InviteCodes /></AdminLayout>} />
-          
-          {/* ✅ Lucky Orders Route ကို AdminLayout အတွင်း ထည့်သွင်းထားသည် */}
-          <Route path="/admin/lucky-orders" element={<AdminLayout><LuckyOrders /></AdminLayout>} />
-          
-          <Route path="/admin/chat" element={<AdminLayout><LiveChat /></AdminLayout>} />
-          <Route path="/admin/settings" element={<AdminLayout><Settings /></AdminLayout>} />
+          {/* 3. Protected Routes - Production Ready */}
+          <Route 
+            path="/admin/dashboard" 
+            element={
+              <ProtectedRoute>
+                <AdminLayout><Dashboard /></AdminLayout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/users" 
+            element={
+              <ProtectedRoute>
+                <AdminLayout><UserManagement /></AdminLayout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/topup" 
+            element={
+              <ProtectedRoute>
+                <AdminLayout><TopupRequests /></AdminLayout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/withdraw" 
+            element={
+              <ProtectedRoute>
+                <AdminLayout><WithdrawRequests /></AdminLayout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/tasks" 
+            element={
+              <ProtectedRoute>
+                <AdminLayout><TaskManagement /></AdminLayout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/invite" 
+            element={
+              <ProtectedRoute>
+                <AdminLayout><InviteCodes /></AdminLayout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/lucky-orders" 
+            element={
+              <ProtectedRoute>
+                <AdminLayout><LuckyOrders /></AdminLayout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/chat" 
+            element={
+              <ProtectedRoute>
+                <AdminLayout><LiveChat /></AdminLayout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/settings" 
+            element={
+              <ProtectedRoute>
+                <AdminLayout><Settings /></AdminLayout>
+              </ProtectedRoute>
+            } 
+          />
+
+          {/* 4. Catch-All Route */}
+          <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
         </Routes>
       </Router>
     </ChatProvider>
