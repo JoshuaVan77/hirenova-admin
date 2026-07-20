@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Users, ArrowUpCircle, ArrowDownCircle, DollarSign, RefreshCw, AlertCircle } from 'lucide-react';
 
-// ✅ 1. Dynamic API URL (Production Ready)
-const API_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+// ✅ 1. FIXED: Separate BASE_URL and API_URL to ensure '/api' is always included
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+const API_URL = `${BASE_URL}/api/dashboard`; // <-- ဒီနေရာမှာ /api ကို ထည့်ပေးလိုက်ပါပြီ
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
@@ -15,27 +16,33 @@ export default function Dashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState(null); // ✅ 2. Added Error State
+  const [error, setError] = useState(null);
+
+  // ✅ 2. Helper function for Auth Headers (Consistent with other pages)
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+    return {
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : '',
+        'Content-Type': 'application/json'
+      }
+    };
+  };
 
   const fetchStats = async () => {
     try {
       setError(null);
-      // ✅ 3. Get Token from Local Storage
-      const token = localStorage.getItem('adminToken');
       
-      const response = await axios.get(`${API_URL}/dashboard/stats`, {
-        headers: {
-          // ✅ 4. Send Token in Authorization Header (Required by Backend adminAuth)
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      // ✅ 3. FIXED: Now calls /api/dashboard/stats
+      const response = await axios.get(`${API_URL}/stats`, getAuthHeaders());
       
       setStats(response.data);
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
-      // ✅ 5. Show user-friendly error message
       if (error.response?.status === 401) {
         setError('Session expired. Please login again.');
+      } else if (error.response?.status === 404) {
+        setError('API endpoint not found. Please check backend deployment.');
       } else {
         setError('Failed to load dashboard data. Please check your connection.');
       }
@@ -65,7 +72,6 @@ export default function Dashboard() {
     return date.toLocaleDateString();
   };
 
-  // ✅ 6. Loading State
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -76,12 +82,11 @@ export default function Dashboard() {
     );
   }
 
-  // ✅ 7. Error State Display
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-64 bg-dark-card rounded-xl border border-red-500/20 p-6">
         <AlertCircle className="h-12 w-12 text-red-400 mb-4" />
-        <p className="text-red-400 text-lg font-medium mb-4">{error}</p>
+        <p className="text-red-400 text-lg font-medium mb-4 text-center">{error}</p>
         <button 
           onClick={fetchStats}
           className="px-4 py-2 bg-brand-primary text-white rounded-lg hover:opacity-90 transition-opacity"
