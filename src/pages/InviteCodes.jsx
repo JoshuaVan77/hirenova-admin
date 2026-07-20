@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Plus, Copy, CheckCircle, XCircle, RefreshCw, Tag } from 'lucide-react';
+import { Plus, Copy, CheckCircle, XCircle, RefreshCw, Tag, AlertCircle } from 'lucide-react';
 
-const API_URL = 'http://localhost:5000/api/invite-codes';
+// ✅ 1. Dynamic API URL (Production Ready)
+const API_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
 
 export default function InviteCodes() {
   const [codes, setCodes] = useState([]);
@@ -11,13 +12,32 @@ export default function InviteCodes() {
   const [showModal, setShowModal] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [maxUses, setMaxUses] = useState('');
+  const [error, setError] = useState(null);
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // ✅ 2. Helper function to get Auth Headers
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('adminToken');
+    return {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+  };
 
   const fetchCodes = async () => {
     try {
-      const response = await axios.get(API_URL);
-      setCodes(response.data.codes);
+      setError(null);
+      const response = await axios.get(`${API_URL}/invite-codes`, getAuthHeaders());
+      setCodes(response.data.codes || []);
     } catch (error) {
       console.error('Error fetching invite codes:', error);
+      if (error.response?.status === 401) {
+        setError('Session expired. Please login again.');
+      } else {
+        setError('Failed to load invite codes.');
+      }
     } finally {
       setLoading(false);
     }
@@ -35,39 +55,76 @@ export default function InviteCodes() {
 
   const handleCreate = async () => {
     if (!newCode.trim() || !maxUses) {
-      alert('Please fill in all fields');
+      setError('Please fill in all fields');
       return;
     }
+    
     try {
-      await axios.post(API_URL, { code: newCode.trim(), max_uses: parseInt(maxUses) });
-      alert('Invite code created successfully!');
+      setError(null);
+      await axios.post(
+        `${API_URL}/invite-codes`, 
+        { code: newCode.trim(), max_uses: parseInt(maxUses) }, 
+        getAuthHeaders()
+      );
+      
+      setSuccessMsg('Invite code created successfully!');
       setShowModal(false);
       setNewCode('');
       setMaxUses('');
       fetchCodes();
+      
+      setTimeout(() => setSuccessMsg(''), 3000); // Clear success message after 3s
     } catch (error) {
-      alert(error.response?.data?.message || 'Failed to create invite code');
+      console.error('Create error:', error);
+      setError(error.response?.data?.message || 'Failed to create invite code');
     }
   };
 
   const handleToggleStatus = async (id, currentStatus) => {
     try {
-      await axios.put(`${API_URL}/${id}`, { is_active: currentStatus === 1 ? 0 : 1 });
+      setError(null);
+      await axios.put(
+        `${API_URL}/invite-codes/${id}`, 
+        { is_active: currentStatus === 1 ? 0 : 1 }, 
+        getAuthHeaders()
+      );
       fetchCodes();
     } catch (error) {
-      alert('Failed to update status');
+      console.error('Toggle error:', error);
+      setError('Failed to update status');
     }
   };
 
   const copyToClipboard = (code) => {
     navigator.clipboard.writeText(code);
-    alert('Copied to clipboard!');
+    setSuccessMsg('Copied to clipboard!');
+    setTimeout(() => setSuccessMsg(''), 2000);
   };
 
-  if (loading) return <div className="p-8 text-center text-gray-400">Loading invite codes...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-gray-400 flex items-center gap-2">
+          <RefreshCw className="h-6 w-6 animate-spin" /> Loading invite codes...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      {/* Error & Success Messages */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg flex items-center gap-2">
+          <AlertCircle className="h-5 w-5" /> {error}
+        </div>
+      )}
+      {successMsg && (
+        <div className="bg-green-500/10 border border-green-500/20 text-green-400 px-4 py-3 rounded-lg flex items-center gap-2">
+          <CheckCircle className="h-5 w-5" /> {successMsg}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-white">Invite Code Management</h2>
@@ -76,11 +133,12 @@ export default function InviteCodes() {
             onClick={handleRefresh}
             disabled={isRefreshing}
             className="p-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg transition-colors disabled:opacity-50"
+            title="Refresh Data"
           >
             <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
           </button>
           <button 
-            onClick={() => setShowModal(true)}
+            onClick={() => { setError(''); setShowModal(true); }}
             className="flex items-center gap-2 bg-brand-secondary hover:bg-brand-primary text-white px-4 py-2 rounded-lg transition-colors font-medium"
           >
             <Plus className="h-4 w-4" /> Create New Code
@@ -103,48 +161,57 @@ export default function InviteCodes() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {codes.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-800/30 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-white font-bold">{item.code}</span>
-                      <button onClick={() => copyToClipboard(item.code)} className="text-gray-500 hover:text-white">
-                        <Copy className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-white">{item.max_uses}</td>
-                  <td className="px-6 py-4">
-                    <span className={`font-bold ${item.current_uses >= item.max_uses ? 'text-red-400' : 'text-green-400'}`}>
-                      {item.current_uses}
-                    </span>
-                    <span className="text-gray-500"> / {item.max_uses}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                      item.is_active === 1 
-                        ? 'bg-green-500/10 text-green-400 border border-green-500/20' 
-                        : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                    }`}>
-                      {item.is_active === 1 ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                      {item.is_active === 1 ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-white">{item.created_by_name || 'Admin'}</td>
-                  <td className="px-6 py-4 text-right">
-                    <button 
-                      onClick={() => handleToggleStatus(item.id, item.is_active)}
-                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                        item.is_active === 1 
-                          ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' 
-                          : 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
-                      }`}
-                    >
-                      {item.is_active === 1 ? 'Deactivate' : 'Activate'}
-                    </button>
+              {codes.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                    No invite codes found. Create one to get started.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                codes.map((item) => (
+                  <tr key={item.id} className="hover:bg-gray-800/30 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-white font-bold">{item.code}</span>
+                        <button onClick={() => copyToClipboard(item.code)} className="text-gray-500 hover:text-white transition-colors" title="Copy">
+                          <Copy className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-white">{item.max_uses}</td>
+                    <td className="px-6 py-4">
+                      {/* ✅ 3. Fixed: Use 'used_count' instead of 'current_uses' to match backend schema */}
+                      <span className={`font-bold ${(item.used_count || 0) >= item.max_uses ? 'text-red-400' : 'text-green-400'}`}>
+                        {item.used_count || 0}
+                      </span>
+                      <span className="text-gray-500"> / {item.max_uses}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                        item.is_active === 1 
+                          ? 'bg-green-500/10 text-green-400 border border-green-500/20' 
+                          : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                      }`}>
+                        {item.is_active === 1 ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                        {item.is_active === 1 ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-white">{item.created_by_name || 'Admin'}</td>
+                    <td className="px-6 py-4 text-right">
+                      <button 
+                        onClick={() => handleToggleStatus(item.id, item.is_active)}
+                        className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                          item.is_active === 1 
+                            ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' 
+                            : 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
+                        }`}
+                      >
+                        {item.is_active === 1 ? 'Deactivate' : 'Activate'}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -167,7 +234,7 @@ export default function InviteCodes() {
                 <input
                   type="text"
                   value={newCode}
-                  onChange={(e) => setNewCode(e.target.value.toUpperCase())}
+                  onChange={(e) => setNewCode(e.target.value.toUpperCase().replace(/\s/g, ''))} // Remove spaces
                   className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 px-4 text-white font-mono focus:outline-none focus:ring-2 focus:ring-brand-secondary"
                   placeholder="e.g., HIRE2024"
                   maxLength={20}
@@ -187,10 +254,16 @@ export default function InviteCodes() {
             </div>
 
             <div className="flex gap-3">
-              <button onClick={() => setShowModal(false)} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition-colors">
+              <button 
+                onClick={() => { setShowModal(false); setError(''); }} 
+                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition-colors"
+              >
                 Cancel
               </button>
-              <button onClick={handleCreate} className="flex-1 bg-brand-secondary hover:bg-brand-primary text-white font-bold py-3 rounded-lg transition-all">
+              <button 
+                onClick={handleCreate} 
+                className="flex-1 bg-brand-secondary hover:bg-brand-primary text-white font-bold py-3 rounded-lg transition-all"
+              >
                 Create Code
               </button>
             </div>
