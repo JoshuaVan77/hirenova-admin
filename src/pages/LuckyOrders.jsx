@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Plus, XCircle, RefreshCw, Target, DollarSign, User } from 'lucide-react';
+import { Plus, XCircle, RefreshCw, Target, DollarSign, Phone, AlertCircle, CheckCircle } from 'lucide-react';
 
-const API_URL = 'http://localhost:5000/api/admin/lucky-orders';
+// ✅ 1. Dynamic API URL (Production Ready)
+const API_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
 
-// ✅ Helper function: Request တိုင်းမှာ Token ပါအောင် ထည့်ပေးမယ့် Function
+// ✅ 2. Helper function: Request တိုင်းမှာ Token ပါအောင် ထည့်ပေးမယ့် Function
 const getAuthHeaders = () => {
   const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-  
   return {
     headers: {
       'Authorization': token ? `Bearer ${token}` : '',
@@ -22,31 +22,29 @@ export default function LuckyOrders() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showModal, setShowModal] = useState(false);
   
-  // ✅ user_phone ကို user_id သို့ ပြောင်းလဲထားပါသည်
+  // ✅ 3. UI Feedback States
+  const [error, setError] = useState(null);
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // ✅ 4. Reverted to user_phone to match Backend Controller logic
   const [formData, setFormData] = useState({
-    user_id: '',
+    user_phone: '',
     task_number: '',
     amount: '',
     commission: ''
   });
 
   const fetchOrders = async () => {
-    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-    if (!token) {
-      window.location.href = '/admin/login';
-      return;
-    }
-
     try {
-      const response = await axios.get(API_URL, getAuthHeaders());
+      setError(null);
+      const response = await axios.get(`${API_URL}/admin/lucky-orders`, getAuthHeaders());
       setOrders(response.data.orders || []);
     } catch (error) {
       console.error('Error fetching lucky orders:', error);
       if (error.response?.status === 401 || error.response?.status === 403) {
-        alert('Session expired or invalid token. Please login again.');
-        localStorage.removeItem('adminToken');
-        localStorage.removeItem('token');
-        window.location.href = '/admin/login'; 
+        setError('Session expired. Please login again.');
+      } else {
+        setError('Failed to load lucky orders.');
       }
     } finally {
       setLoading(false);
@@ -59,43 +57,72 @@ export default function LuckyOrders() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
+    setError(null);
     await fetchOrders();
     setTimeout(() => setIsRefreshing(false), 800);
   };
 
   const handleCreate = async () => {
-    // ✅ user_id စစ်ဆေးခြင်း
-    if (!formData.user_id || !formData.task_number || !formData.amount || !formData.commission) {
-      alert('Please fill in all fields');
+    if (!formData.user_phone || !formData.task_number || !formData.amount || !formData.commission) {
+      setError('Please fill in all fields');
       return;
     }
     try {
-      await axios.post(API_URL, formData, getAuthHeaders());
-      alert('Lucky order assigned successfully!');
+      setError(null);
+      await axios.post(`${API_URL}/admin/lucky-orders`, formData, getAuthHeaders());
+      
+      setSuccessMsg('Lucky order assigned successfully!');
       setShowModal(false);
-      setFormData({ user_id: '', task_number: '', amount: '', commission: '' });
+      setFormData({ user_phone: '', task_number: '', amount: '', commission: '' });
       fetchOrders();
+      
+      setTimeout(() => setSuccessMsg(''), 3000);
     } catch (error) {
       console.error('Create error:', error);
-      alert(error.response?.data?.message || 'Failed to assign lucky order');
+      setError(error.response?.data?.message || 'Failed to assign lucky order.');
     }
   };
 
   const handleCancel = async (id) => {
     if (!window.confirm('Are you sure you want to cancel this lucky order?')) return;
     try {
-      await axios.put(`${API_URL}/${id}/cancel`, {}, getAuthHeaders());
+      setError(null);
+      await axios.put(`${API_URL}/admin/lucky-orders/${id}/cancel`, {}, getAuthHeaders());
+      
+      setSuccessMsg('Lucky order cancelled successfully!');
       fetchOrders();
+      
+      setTimeout(() => setSuccessMsg(''), 3000);
     } catch (error) {
       console.error('Cancel error:', error);
-      alert(error.response?.data?.message || 'Failed to cancel lucky order');
+      setError(error.response?.data?.message || 'Failed to cancel lucky order.');
     }
   };
 
-  if (loading) return <div className="p-8 text-center text-gray-400">Loading lucky orders...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-gray-400 flex items-center gap-2">
+          <RefreshCw className="h-6 w-6 animate-spin" /> Loading lucky orders...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      {/* ✅ Error & Success Messages */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 flex-shrink-0" /> {error}
+        </div>
+      )}
+      {successMsg && (
+        <div className="bg-green-500/10 border border-green-500/20 text-green-400 px-4 py-3 rounded-lg flex items-center gap-2">
+          <CheckCircle className="h-5 w-5 flex-shrink-0" /> {successMsg}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-white">Lucky Order Management</h2>
@@ -104,11 +131,12 @@ export default function LuckyOrders() {
             onClick={handleRefresh}
             disabled={isRefreshing}
             className="p-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg transition-colors disabled:opacity-50"
+            title="Refresh Data"
           >
             <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
           </button>
           <button 
-            onClick={() => setShowModal(true)}
+            onClick={() => { setError(''); setShowModal(true); }}
             className="flex items-center gap-2 bg-brand-secondary hover:bg-brand-primary text-white px-4 py-2 rounded-lg transition-colors font-medium"
           >
             <Plus className="h-4 w-4" /> Assign Lucky Order
@@ -133,7 +161,9 @@ export default function LuckyOrders() {
             <tbody className="divide-y divide-gray-800">
               {orders.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-8 text-center text-gray-500">No lucky orders assigned yet</td>
+                  <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                    No lucky orders assigned yet.
+                  </td>
                 </tr>
               ) : (
                 orders.map((order) => (
@@ -147,8 +177,8 @@ export default function LuckyOrders() {
                         Task #{order.task_number}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-red-400 font-bold">${parseFloat(order.amount).toFixed(2)}</td>
-                    <td className="px-6 py-4 text-green-400 font-bold">+${parseFloat(order.commission).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-red-400 font-bold">${parseFloat(order.amount || 0).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-green-400 font-bold">+${parseFloat(order.commission || 0).toFixed(2)}</td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                         order.status === 'pending' 
@@ -161,7 +191,7 @@ export default function LuckyOrders() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {order.status === 'pending' && (
+                      {(order.status === 'pending' || order.status === 'assigned') && (
                         <button 
                           onClick={() => handleCancel(order.id)}
                           className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
@@ -191,20 +221,20 @@ export default function LuckyOrders() {
             </div>
             
             <div className="space-y-4 mb-6">
-              {/* ✅ User ID Input (Changed from User Phone Number) */}
+              {/* ✅ Reverted to User Phone to match Backend Controller */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                  <User className="h-4 w-4" /> User ID
+                  <Phone className="h-4 w-4" /> User Phone Number
                 </label>
                 <input
-                  type="number"
-                  value={formData.user_id}
-                  onChange={(e) => setFormData({...formData, user_id: e.target.value})}
+                  type="text"
+                  value={formData.user_phone}
+                  onChange={(e) => setFormData({...formData, user_phone: e.target.value})}
                   className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary"
-                  placeholder="e.g., 2"
+                  placeholder="e.g., 09123456789"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">Enter the User ID from the User Management page</p>
+                <p className="text-xs text-gray-500 mt-1">Enter the exact phone number registered by the user</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -248,7 +278,7 @@ export default function LuckyOrders() {
 
             <div className="flex gap-3">
               <button 
-                onClick={() => setShowModal(false)} 
+                onClick={() => { setShowModal(false); setError(''); }} 
                 className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition-colors"
               >
                 Cancel
