@@ -1,11 +1,18 @@
 import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import io from 'socket.io-client';
-import { Send, MessageCircle, User, RefreshCw } from 'lucide-react';
+import { Send, MessageCircle, User, RefreshCw, AlertCircle } from 'lucide-react';
 import { useChat } from '../context/ChatContext';
 
-const API_URL = 'http://localhost:5000/api/chat';
-const socket = io('http://localhost:5000');
+// ✅ 1. Dynamic URLs (Production Ready)
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+const API_URL = `${BASE_URL}/api/chat`;
+const SOCKET_URL = BASE_URL; // Socket.io connects to the base URL
+
+// ✅ Initialize Socket with base URL
+const socket = io(SOCKET_URL, {
+  transports: ['websocket', 'polling']
+});
 
 export default function LiveChat() {
   const { resetUnreadCount } = useChat();
@@ -14,16 +21,30 @@ export default function LiveChat() {
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState(null); // ✅ UI Feedback State
   const messagesEndRef = useRef(null);
+
+  // ✅ 2. Helper function to get Auth Headers
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+    return {
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : '',
+        'Content-Type': 'application/json'
+      }
+    };
+  };
 
   const fetchConversations = async () => {
     try {
-      const response = await axios.get(`${API_URL}/conversations`);
+      setError(null);
+      const response = await axios.get(`${API_URL}/conversations`, getAuthHeaders());
       const mapped = response.data.conversations.map(c => ({
         id: c.user_id,
+        conversation_id: c.conversation_id,
         user_name: c.full_name || 'Unknown User',
         user_phone: c.phone,
-        status: 'active',
+        status: c.status || 'active',
         last_message: c.last_message,
         last_time: new Date(c.last_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         unread: c.unread_count
@@ -31,6 +52,11 @@ export default function LiveChat() {
       setConversations(mapped);
     } catch (error) {
       console.error('Error fetching conversations:', error);
+      if (error.response?.status === 401) {
+        setError('Session expired. Please login again.');
+      } else {
+        setError('Failed to load conversations.');
+      }
     }
   };
 
@@ -38,47 +64,55 @@ export default function LiveChat() {
     fetchConversations();
     socket.emit('join_admin_room');
 
-    socket.on('new_message', (data) => {
-      fetchConversations();
+    const handleNewMessage = (data) => {
+      fetchConversations(); // Refresh conversation list to update last message & unread count
+      
       if (selectedConversation && selectedConversation.id === data.userId) {
         setMessages(prev => {
+          // Prevent duplicate messages
           if (prev.some(m => m.id === data.message.id)) return prev;
-          return [...prev, data.message];
+          
+          // ✅ 3. Map backend response (sender_type, content) to frontend format
+          return [...prev, {
+            id: data.message.id,
+            sender_type: data.message.sender_type,
+            content: data.message.content,
+            created_at: data.message.created_at
+          }];
         });
       }
-    });
+    };
 
-    return () => socket.off('new_message');
+    socket.on('new_message', handleNewMessage);
+
+    return () => {
+      socket.off('new_message', handleNewMessage);
+    };
   }, [selectedConversation]);
 
   const fetchMessages = async (userId) => {
     try {
-      const response = await axios.get(`${API_URL}/messages/${userId}`);
+      setError(null);
+      const response = await axios.get(`${API_URL}/messages/${userId}`, getAuthHeaders());
       setMessages(response.data.messages || []);
       
       // ✅ Backend ကို mark as read လုပ်ခိုင်းမယ်
-      await axios.post(`${API_URL}/mark-read`, { userId });
+      await axios.post(`${API_URL}/mark-read`, { userId }, getAuthHeaders());
       
     } catch (error) {
       console.error('Error fetching messages:', error);
+      setError('Failed to load messages.');
     }
   };
 
   const handleSelectConversation = (conv) => {
-    // ✅ ၁။ Global unread count ကို ချက်ချင်း reset လုပ်မယ်
     resetUnreadCount();
     
-    // ✅ ၂။ Local state မှာလည်း ဒီ conversation ရဲ့ badge ကို ချက်ချင်း ဖျက်မယ်
     setConversations(prev => 
-      prev.map(c => 
-        c.id === conv.id ? { ...c, unread: 0 } : c
-      )
+      prev.map(c => c.id === conv.id ? { ...c, unread: 0 } : c)
     );
     
-    // ✅ ။ Conversation ကို select လုပ်မယ်
     setSelectedConversation(conv);
-    
-    // ✅ ၄။ Messages ကို ဆွဲမယ် (အဲဒီထဲမှာ mark as read ပါ ပါမယ်)
     fetchMessages(conv.id);
   };
 
@@ -94,16 +128,27 @@ export default function LiveChat() {
     e.preventDefault();
     if (!message.trim() || !selectedConversation) return;
 
-    const tempMsg = { id: Date.now(), sender: 'admin', message: message, created_at: new Date().toISOString() };
+    // ✅ Optimistic UI update
+    const tempMsg = { 
+      id: Date.now(), 
+      sender_type: 'admin', 
+      content: message, 
+      created_at: new Date().toISOString() 
+    };
     setMessages(prev => [...prev, tempMsg]);
     setMessage('');
 
     try {
-      await axios.post(`${API_URL}/reply`, { userId: selectedConversation.id, message: message });
+      await axios.post(
+        `${API_URL}/reply`, 
+        { userId: selectedConversation.id, message: message }, 
+        getAuthHeaders()
+      );
     } catch (error) {
       console.error('Error sending reply:', error);
+      // Rollback optimistic update on failure
       setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
-      alert('Failed to send message');
+      setError('Failed to send message. Please try again.');
     }
   };
 
@@ -113,6 +158,13 @@ export default function LiveChat() {
     <div className="w-full h-full flex flex-col">
       <h2 className="text-2xl font-bold text-white mb-4">Live Chat Support</h2>
       
+      {/* ✅ Error Message Display */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg flex items-center gap-2 mb-4">
+          <AlertCircle className="h-5 w-5 flex-shrink-0" /> {error}
+        </div>
+      )}
+      
       <div className="flex flex-1 bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
         
         {/* 1. Conversations List */}
@@ -121,7 +173,11 @@ export default function LiveChat() {
             <span className="font-semibold text-white flex items-center gap-2">
               <MessageCircle className="h-4 w-4 text-brand-secondary" /> Conversations
             </span>
-            <button onClick={() => { setIsRefreshing(true); fetchConversations(); setTimeout(() => setIsRefreshing(false), 800); }} className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded">
+            <button 
+              onClick={() => { setIsRefreshing(true); fetchConversations(); setTimeout(() => setIsRefreshing(false), 800); }} 
+              className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded transition-colors"
+              title="Refresh"
+            >
               <RefreshCw className={`h-4 w-4 text-white ${isRefreshing ? 'animate-spin' : ''}`} />
             </button>
           </div>
@@ -140,7 +196,6 @@ export default function LiveChat() {
                       : 'hover:bg-gray-800/50'
                   }`}
                 >
-                  {/* ✅ Badge - unread > 0 မှသာ ပြမယ် */}
                   {conv.unread > 0 && (
                     <span className="absolute top-2 right-2 bg-red-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full text-[10px]">
                       {conv.unread}
@@ -173,9 +228,10 @@ export default function LiveChat() {
 
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {messages.map((msg) => (
-                  <div key={msg.id} className={`flex ${msg.sender === 'admin' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[70%] rounded-xl px-3 py-2 ${msg.sender === 'admin' ? 'bg-brand-primary text-white' : 'bg-gray-800 text-gray-200'}`}>
-                      {msg.message && <p className="text-sm">{msg.message}</p>}
+                  <div key={msg.id} className={`flex ${msg.sender_type === 'admin' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[70%] rounded-xl px-3 py-2 ${msg.sender_type === 'admin' ? 'bg-brand-primary text-white' : 'bg-gray-800 text-gray-200'}`}>
+                      {/* ✅ 4. Use 'content' instead of 'message' */}
+                      {msg.content && <p className="text-sm">{msg.content}</p>}
                       <p className="text-[10px] mt-1 text-right opacity-70">
                         {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
@@ -194,7 +250,11 @@ export default function LiveChat() {
                     placeholder="Type your reply..." 
                     className="flex-1 bg-dark-input border border-gray-700 rounded-full py-2 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary" 
                   />
-                  <button type="submit" disabled={!message.trim()} className="bg-brand-secondary text-white p-2 rounded-full hover:bg-brand-primary transition-colors disabled:opacity-50">
+                  <button 
+                    type="submit" 
+                    disabled={!message.trim()} 
+                    className="bg-brand-secondary text-white p-2 rounded-full hover:bg-brand-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     <Send className="h-5 w-5" />
                   </button>
                 </form>
