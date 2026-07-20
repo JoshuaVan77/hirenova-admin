@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Users, ArrowUpCircle, ArrowDownCircle, DollarSign, RefreshCw } from 'lucide-react';
+import { Users, ArrowUpCircle, ArrowDownCircle, DollarSign, RefreshCw, AlertCircle } from 'lucide-react';
 
-const API_URL = 'http://localhost:5000/api/dashboard';
+// ✅ 1. Dynamic API URL (Production Ready)
+const API_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
@@ -14,13 +15,30 @@ export default function Dashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState(null); // ✅ 2. Added Error State
 
   const fetchStats = async () => {
     try {
-      const response = await axios.get(`${API_URL}/stats`);
+      setError(null);
+      // ✅ 3. Get Token from Local Storage
+      const token = localStorage.getItem('adminToken');
+      
+      const response = await axios.get(`${API_URL}/dashboard/stats`, {
+        headers: {
+          // ✅ 4. Send Token in Authorization Header (Required by Backend adminAuth)
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
       setStats(response.data);
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
+      // ✅ 5. Show user-friendly error message
+      if (error.response?.status === 401) {
+        setError('Session expired. Please login again.');
+      } else {
+        setError('Failed to load dashboard data. Please check your connection.');
+      }
     } finally {
       setLoading(false);
     }
@@ -47,12 +65,29 @@ export default function Dashboard() {
     return date.toLocaleDateString();
   };
 
+  // ✅ 6. Loading State
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-gray-400 flex items-center gap-2">
           <RefreshCw className="h-6 w-6 animate-spin" /> Loading dashboard...
         </div>
+      </div>
+    );
+  }
+
+  // ✅ 7. Error State Display
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 bg-dark-card rounded-xl border border-red-500/20 p-6">
+        <AlertCircle className="h-12 w-12 text-red-400 mb-4" />
+        <p className="text-red-400 text-lg font-medium mb-4">{error}</p>
+        <button 
+          onClick={fetchStats}
+          className="px-4 py-2 bg-brand-primary text-white rounded-lg hover:opacity-90 transition-opacity"
+        >
+          Try Again
+        </button>
       </div>
     );
   }
@@ -82,7 +117,7 @@ export default function Dashboard() {
             </div>
           </div>
           <p className="text-gray-400 text-sm mb-1">Total Users</p>
-          <p className="text-3xl font-bold text-white">{stats.totalUsers.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-white">{stats.totalUsers?.toLocaleString() || 0}</p>
         </div>
 
         {/* Pending Top-ups */}
@@ -93,7 +128,7 @@ export default function Dashboard() {
             </div>
           </div>
           <p className="text-gray-400 text-sm mb-1">Pending Top-ups</p>
-          <p className="text-3xl font-bold text-white">{stats.pendingTopups}</p>
+          <p className="text-3xl font-bold text-white">{stats.pendingTopups || 0}</p>
         </div>
 
         {/* Pending Withdrawals */}
@@ -104,7 +139,7 @@ export default function Dashboard() {
             </div>
           </div>
           <p className="text-gray-400 text-sm mb-1">Pending Withdrawals</p>
-          <p className="text-3xl font-bold text-white">{stats.pendingWithdrawals}</p>
+          <p className="text-3xl font-bold text-white">{stats.pendingWithdrawals || 0}</p>
         </div>
 
         {/* Total Revenue */}
@@ -115,7 +150,9 @@ export default function Dashboard() {
             </div>
           </div>
           <p className="text-gray-400 text-sm mb-1">Total Revenue</p>
-          <p className="text-3xl font-bold text-white">${stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          <p className="text-3xl font-bold text-white">
+            ${stats.totalRevenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+          </p>
         </div>
       </div>
 
@@ -136,7 +173,7 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {stats.recentTransactions.length === 0 ? (
+              {(!stats.recentTransactions || stats.recentTransactions.length === 0) ? (
                 <tr>
                   <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
                     No transactions yet
@@ -145,19 +182,19 @@ export default function Dashboard() {
               ) : (
                 stats.recentTransactions.map((transaction) => (
                   <tr key={transaction.id} className="hover:bg-gray-800/30 transition-colors">
-                    <td className="px-6 py-4 font-mono text-white">{transaction.user_id}</td>
+                    <td className="px-6 py-4 font-mono text-white">{transaction.formatted_user_id || `USR${transaction.user_id}`}</td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center gap-1 ${
-                        transaction.type === 'topup' ? 'text-green-400' : 'text-red-400'
+                        transaction.type.includes('topup') ? 'text-green-400' : 'text-red-400'
                       }`}>
-                        {transaction.type === 'topup' ? <ArrowUpCircle className="h-4 w-4" /> : <ArrowDownCircle className="h-4 w-4" />}
-                        {transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}
+                        {transaction.type.includes('topup') ? <ArrowUpCircle className="h-4 w-4" /> : <ArrowDownCircle className="h-4 w-4" />}
+                        {transaction.type.replace('_', ' ').charAt(0).toUpperCase() + transaction.type.replace('_', ' ').slice(1)}
                       </span>
                     </td>
                     <td className={`px-6 py-4 font-bold ${
-                      transaction.type === 'topup' ? 'text-green-400' : 'text-red-400'
+                      transaction.type.includes('topup') ? 'text-green-400' : 'text-red-400'
                     }`}>
-                      {transaction.type === 'topup' ? '+' : '-'}${parseFloat(transaction.amount).toFixed(2)}
+                      {transaction.type.includes('topup') ? '+' : '-'}${parseFloat(transaction.amount).toFixed(2)}
                     </td>
                     <td className="px-6 py-4 text-gray-400">{formatTime(transaction.created_at)}</td>
                     <td className="px-6 py-4">
