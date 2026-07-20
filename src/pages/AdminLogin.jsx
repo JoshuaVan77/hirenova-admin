@@ -1,47 +1,73 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, Shield } from 'lucide-react';
-import axios from 'axios'; // ✅ Axios ကို Import လုပ်ပါ
+import axios from 'axios';
 
 export default function AdminLogin() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState(''); // ✅ Error ပြသရန် State
-  const [loading, setLoading] = useState(false); // ✅ Loading ပြသရန် State
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  // ✅ Production API URL (Fallback if .env is not set)
+  const API_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
+    
+    // ✅ Input Validation
+    if (!username.trim() || !password.trim()) {
+      setError('Please enter both username and password');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // ✅ ၁။ Backend API ကို အမှန်တကယ် ခေါ်ယူအသုံးပြုခြင်း
-      // ✅ မှန်ကန်သော ပုံစံ
+      // ✅ 1. Call Backend API
       const response = await axios.post(
-        `${import.meta.env.VITE_API_URL}/admin/login`, 
-          { username, password }
+        `${API_URL}/admin/login`,
+        { username, password },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 10000, // 10 seconds timeout
+        }
       );
 
-      // ✅ ၂။ Backend က ပြန်ပို့တဲ့ Token ရှိမရှိ စစ်ဆေးခြင်း
+      // ✅ 2. Check if token exists
       if (response.data && response.data.token) {
-        // ✅ ၃။ Token ကို Local Storage ထဲသို့ သိမ်းဆည်းခြင်း (LuckyOrders.jsx နှင့် Key တူညီရမည်)
+        // ✅ 3. Store Token (Must match App.jsx ProtectedRoute)
         localStorage.setItem('adminToken', response.data.token);
         
-        // (Optional) Admin အချက်အလက်ကိုပါ သိမ်းဆည်းထားနိုင်ပါသည်
+        // Store Admin Info (Optional)
         if (response.data.admin) {
           localStorage.setItem('adminUser', JSON.stringify(response.data.admin));
         }
 
-        // ✅ ၄။ Dashboard သို့ Redirect လုပ်ခြင်း
-        navigate('/admin/dashboard');
+        // ✅ 4. Redirect to Dashboard
+        navigate('/admin/dashboard', { replace: true });
       } else {
         setError('Login successful, but no token received from server.');
       }
     } catch (err) {
-      // ✅ ၅။ Error ဖြစ်ပါက Message ပြသခြင်း
+      // ✅ 5. Handle Errors
       console.error('Login error:', err);
-      setError(err.response?.data?.message || 'Invalid username or password. Please try again.');
+      
+      if (err.code === 'ECONNABORTED') {
+        setError('Request timeout. Please check your internet connection.');
+      } else if (err.response) {
+        // Server responded with error
+        setError(err.response.data?.message || 'Invalid username or password.');
+      } else if (err.request) {
+        // Request made but no response
+        setError('Cannot connect to server. Please check your internet connection.');
+      } else {
+        setError('An unexpected error occurred. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -58,42 +84,48 @@ export default function AdminLogin() {
           <p className="text-gray-400">HireNova Management System</p>
         </div>
 
-        {/* ✅ Error Message ပြသရန် အပိုင်း */}
+        {/* ✅ Error Message Display */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg mb-6 text-sm text-center">
+          <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg mb-6 text-sm text-center animate-pulse">
             {error}
           </div>
         )}
 
         <form onSubmit={handleLogin} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Username
+            </label>
             <div className="relative">
               <User className="absolute left-3 top-3 h-5 w-5 text-gray-500" />
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary"
+                className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary transition-all"
                 placeholder="Enter admin username"
                 required
                 disabled={loading}
+                autoComplete="username"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Password
+            </label>
             <div className="relative">
               <Lock className="absolute left-3 top-3 h-5 w-5 text-gray-500" />
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary"
+                className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary transition-all"
                 placeholder="Enter admin password"
                 required
                 disabled={loading}
+                autoComplete="current-password"
               />
             </div>
           </div>
@@ -101,11 +133,32 @@ export default function AdminLogin() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold py-3 rounded-lg hover:opacity-90 transition-opacity shadow-lg shadow-brand-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold py-3 rounded-lg hover:opacity-90 transition-all shadow-lg shadow-brand-primary/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:opacity-50"
           >
-            {loading ? 'Logging in...' : 'Login to Dashboard'}
+            {loading ? (
+              <span className="flex items-center justify-center">
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Logging in...
+              </span>
+            ) : (
+              'Login to Dashboard'
+            )}
           </button>
         </form>
+
+        {/* ✅ Demo Credentials (Remove in production if needed) */}
+        <div className="mt-6 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+          <p className="text-xs text-gray-400 text-center">
+            <span className="font-semibold text-gray-300">Demo Credentials:</span>
+            <br />
+            Username: <code className="text-brand-secondary">admin</code>
+            <br />
+            Password: <code className="text-brand-secondary">admin123</code>
+          </p>
+        </div>
       </div>
     </div>
   );
