@@ -10,20 +10,14 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // ✅ FIXED: Properly construct API URL with /api prefix
-  const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
-  const API_URL = `${BASE_URL}/api`; // This ensures /api is always included
-  
-  // Debug logging
-  console.log('🔍 BASE_URL:', BASE_URL);
-  console.log('🔍 API_URL:', API_URL);
-  console.log('🔍 Full Login URL:', `${API_URL}/admin/login`);
+  // 🔥 GUARANTEED FIX: Hardcoded URL to bypass any Environment Variable issues
+  // (စမ်းသပ်ရန် URL ကို တိုက်ရိုက်ထည့်ထားပါသည်)
+  const LOGIN_URL = 'https://hirenova-backend-production-32b1.up.railway.app/api/admin/login';
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     
-    // Input Validation
     if (!username.trim() || !password.trim()) {
       setError('Please enter both username and password');
       return;
@@ -32,55 +26,44 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      const loginURL = `${API_URL}/admin/login`;
-      console.log('🚀 Attempting login to:', loginURL);
+      console.log('🚀 Attempting login to EXACT URL:', LOGIN_URL);
       
       const response = await axios.post(
-        loginURL,
+        LOGIN_URL, // <-- Use the hardcoded URL directly
         { username, password },
         {
           headers: {
             'Content-Type': 'application/json',
           },
-          timeout: 15000, // 15 seconds timeout
+          timeout: 15000,
         }
       );
 
       console.log('✅ Login successful:', response.data);
 
-      // Check if token exists
       if (response.data && response.data.token) {
-        // Store Token
         localStorage.setItem('adminToken', response.data.token);
-        
-        // Store Admin Info
         if (response.data.admin) {
           localStorage.setItem('adminUser', JSON.stringify(response.data.admin));
         }
 
         console.log('🔑 Token stored successfully');
-        
-        // Redirect to Dashboard
         navigate('/admin/dashboard', { replace: true });
       } else {
         console.error('❌ No token received from server');
         setError('Login successful, but no token received from server.');
       }
     } catch (err) {
-      console.error('❌ Login error:', err);
-      console.error('Error Response:', err.response);
-      console.error('Error Request:', err.request);
+      console.error('❌ Login error details:', err);
       
       if (err.code === 'ECONNABORTED') {
         setError('Request timeout. Please check your internet connection.');
       } else if (err.response) {
-        // Server responded with error
-        console.error('Server Error Data:', err.response.data);
+        console.error('Server responded with:', err.response.status, err.response.data);
         setError(err.response.data?.message || 'Invalid username or password.');
       } else if (err.request) {
-        // Request made but no response
-        console.error('No response from server');
-        setError('Cannot connect to server. Please check your internet connection.');
+        console.error('No response received from server');
+        setError('Cannot connect to server. Please check backend status.');
       } else {
         setError('An unexpected error occurred. Please try again.');
       }
@@ -100,7 +83,6 @@ export default function AdminLogin() {
           <p className="text-gray-400">HireNova Management System</p>
         </div>
 
-        {/* Error Message Display */}
         {error && (
           <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg mb-6 flex items-start gap-3">
             <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
@@ -110,9 +92,7 @@ export default function AdminLogin() {
 
         <form onSubmit={handleLogin} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Username
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
             <div className="relative">
               <User className="absolute left-3 top-3 h-5 w-5 text-gray-500" />
               <input
@@ -129,9 +109,7 @@ export default function AdminLogin() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Password
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
             <div className="relative">
               <Lock className="absolute left-3 top-3 h-5 w-5 text-gray-500" />
               <input
@@ -166,7 +144,6 @@ export default function AdminLogin() {
           </button>
         </form>
 
-        {/* Demo Credentials */}
         <div className="mt-6 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
           <p className="text-xs text-gray-400 text-center">
             <span className="font-semibold text-gray-300">Demo Credentials:</span>
