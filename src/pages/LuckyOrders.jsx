@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Plus, XCircle, RefreshCw, Target, DollarSign, Phone, AlertCircle, CheckCircle } from 'lucide-react';
 
-// ✅ 1. Dynamic API URL (Production Ready)
-const API_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+// ✅ FIXED: Separate BASE_URL and API_URL to ensure '/api' is always included
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+const API_URL = `${BASE_URL}/api/admin/lucky-orders`; // <-- ဒီနေရာမှာ /api ကို ထည့်ပေးလိုက်ပါပြီ
 
-// ✅ 2. Helper function: Request တိုင်းမှာ Token ပါအောင် ထည့်ပေးမယ့် Function
+// ✅ Helper function: Request တိုင်းမှာ Token ပါအောင် ထည့်ပေးမယ့် Function
 const getAuthHeaders = () => {
   const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
   return {
@@ -22,11 +23,11 @@ export default function LuckyOrders() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showModal, setShowModal] = useState(false);
   
-  // ✅ 3. UI Feedback States
+  // ✅ UI Feedback States
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
-  // ✅ 4. Reverted to user_phone to match Backend Controller logic
+  // ✅ Reverted to user_phone to match Backend Controller logic
   const [formData, setFormData] = useState({
     user_phone: '',
     task_number: '',
@@ -37,12 +38,15 @@ export default function LuckyOrders() {
   const fetchOrders = async () => {
     try {
       setError(null);
-      const response = await axios.get(`${API_URL}/admin/lucky-orders`, getAuthHeaders());
+      // ✅ Now calls /api/admin/lucky-orders
+      const response = await axios.get(API_URL, getAuthHeaders());
       setOrders(response.data.orders || []);
     } catch (error) {
       console.error('Error fetching lucky orders:', error);
       if (error.response?.status === 401 || error.response?.status === 403) {
         setError('Session expired. Please login again.');
+      } else if (error.response?.status === 404) {
+        setError('API endpoint not found. Please check backend deployment.');
       } else {
         setError('Failed to load lucky orders.');
       }
@@ -69,7 +73,7 @@ export default function LuckyOrders() {
     }
     try {
       setError(null);
-      await axios.post(`${API_URL}/admin/lucky-orders`, formData, getAuthHeaders());
+      await axios.post(API_URL, formData, getAuthHeaders());
       
       setSuccessMsg('Lucky order assigned successfully!');
       setShowModal(false);
@@ -87,7 +91,7 @@ export default function LuckyOrders() {
     if (!window.confirm('Are you sure you want to cancel this lucky order?')) return;
     try {
       setError(null);
-      await axios.put(`${API_URL}/admin/lucky-orders/${id}/cancel`, {}, getAuthHeaders());
+      await axios.put(`${API_URL}/${id}/cancel`, {}, getAuthHeaders());
       
       setSuccessMsg('Lucky order cancelled successfully!');
       fetchOrders();
@@ -111,7 +115,7 @@ export default function LuckyOrders() {
 
   return (
     <div className="space-y-6">
-      {/* ✅ Error & Success Messages */}
+      {/* Error & Success Messages */}
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertCircle className="h-5 w-5 flex-shrink-0" /> {error}
@@ -221,7 +225,7 @@ export default function LuckyOrders() {
             </div>
             
             <div className="space-y-4 mb-6">
-              {/* ✅ Reverted to User Phone to match Backend Controller */}
+              {/* Reverted to User Phone to match Backend Controller */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
                   <Phone className="h-4 w-4" /> User Phone Number
