@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, User, Shield } from 'lucide-react';
+import { Lock, User, Shield, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 
 export default function AdminLogin() {
@@ -10,9 +10,14 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // ✅ FIXED: Separate BASE_URL and API_URL to ensure '/api' is always included
+  // ✅ FIXED: Properly construct API URL with /api prefix
   const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
-  const API_URL = `${BASE_URL}/api`; // <-- /api ကို ဒီနေရာမှာ ထည့်ပေးလိုက်ပါပြီ
+  const API_URL = `${BASE_URL}/api`; // This ensures /api is always included
+  
+  // Debug logging
+  console.log('🔍 BASE_URL:', BASE_URL);
+  console.log('🔍 API_URL:', API_URL);
+  console.log('🔍 Full Login URL:', `${API_URL}/admin/login`);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -27,43 +32,54 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      // ✅ Now calls /api/admin/login
+      const loginURL = `${API_URL}/admin/login`;
+      console.log('🚀 Attempting login to:', loginURL);
+      
       const response = await axios.post(
-        `${API_URL}/admin/login`,
+        loginURL,
         { username, password },
         {
           headers: {
             'Content-Type': 'application/json',
           },
-          timeout: 10000, // 10 seconds timeout
+          timeout: 15000, // 15 seconds timeout
         }
       );
+
+      console.log('✅ Login successful:', response.data);
 
       // Check if token exists
       if (response.data && response.data.token) {
         // Store Token
         localStorage.setItem('adminToken', response.data.token);
         
-        // Store Admin Info (Optional)
+        // Store Admin Info
         if (response.data.admin) {
           localStorage.setItem('adminUser', JSON.stringify(response.data.admin));
         }
 
+        console.log('🔑 Token stored successfully');
+        
         // Redirect to Dashboard
         navigate('/admin/dashboard', { replace: true });
       } else {
+        console.error('❌ No token received from server');
         setError('Login successful, but no token received from server.');
       }
     } catch (err) {
-      console.error('Login error:', err);
+      console.error('❌ Login error:', err);
+      console.error('Error Response:', err.response);
+      console.error('Error Request:', err.request);
       
       if (err.code === 'ECONNABORTED') {
         setError('Request timeout. Please check your internet connection.');
       } else if (err.response) {
         // Server responded with error
+        console.error('Server Error Data:', err.response.data);
         setError(err.response.data?.message || 'Invalid username or password.');
       } else if (err.request) {
         // Request made but no response
+        console.error('No response from server');
         setError('Cannot connect to server. Please check your internet connection.');
       } else {
         setError('An unexpected error occurred. Please try again.');
@@ -86,8 +102,9 @@ export default function AdminLogin() {
 
         {/* Error Message Display */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg mb-6 text-sm text-center animate-pulse">
-            {error}
+          <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg mb-6 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+            <span className="text-sm">{error}</span>
           </div>
         )}
 
