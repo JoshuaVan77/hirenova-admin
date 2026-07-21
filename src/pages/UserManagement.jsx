@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Search, Edit2, Ban, CheckCircle, XCircle, Lock, DollarSign, Star, RefreshCw, AlertCircle } from 'lucide-react';
 
-// ✅ 1. Dynamic API URL (Production Ready)
-const API_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+// ✅ FIXED: Add /api prefix
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+const API_URL = `${BASE_URL}/api/admin`;
 
 export default function UserManagement() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -18,16 +19,16 @@ export default function UserManagement() {
     payment_password: ''
   });
   
-  // ✅ 2. UI Feedback States
+  // ✅ UI Feedback States
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
-  // ✅ 3. Helper function to get Auth Headers
+  // ✅ Helper function to get Auth Headers
   const getAuthHeaders = () => {
-    const token = localStorage.getItem('adminToken');
+    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
     return {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': token ? `Bearer ${token}` : '',
         'Content-Type': 'application/json'
       }
     };
@@ -37,7 +38,7 @@ export default function UserManagement() {
   const fetchUsers = async () => {
     try {
       setError(null);
-      const response = await axios.get(`${API_URL}/admin/users`, getAuthHeaders());
+      const response = await axios.get(`${API_URL}/users`, getAuthHeaders());
       const formattedUsers = response.data.users.map(u => ({
         ...u,
         status: u.is_banned === 1 ? 'banned' : 'active'
@@ -47,6 +48,8 @@ export default function UserManagement() {
       console.error('Error fetching users:', error);
       if (error.response?.status === 401) {
         setError('Session expired. Please login again.');
+      } else if (error.response?.status === 404) {
+        setError('API endpoint not found. Please check backend.');
       } else {
         setError('Failed to load users.');
       }
@@ -76,7 +79,6 @@ export default function UserManagement() {
     try {
       setError(null);
       
-      // ✅ Only send passwords if they are not empty
       const updateData = {
         credit_score: parseInt(formData.credit_score) || 0,
         balance: parseFloat(formData.balance) || 0
@@ -89,13 +91,13 @@ export default function UserManagement() {
         updateData.payment_password = formData.payment_password.trim();
       }
 
-      await axios.put(`${API_URL}/admin/users/${editingUser.id}`, updateData, getAuthHeaders());
+      await axios.put(`${API_URL}/users/${editingUser.id}`, updateData, getAuthHeaders());
       
       setSuccessMsg('User updated successfully!');
       setEditingUser(null);
       fetchUsers();
       
-      setTimeout(() => setSuccessMsg(''), 3000); // Clear success message after 3s
+      setTimeout(() => setSuccessMsg(''), 3000);
     } catch (error) {
       console.error('Error updating user:', error);
       setError(error.response?.data?.message || 'Failed to update user.');
@@ -107,7 +109,7 @@ export default function UserManagement() {
     try {
       setError(null);
       const is_banned = currentStatus === 'active' ? 1 : 0;
-      await axios.put(`${API_URL}/admin/users/${id}`, { is_banned }, getAuthHeaders());
+      await axios.put(`${API_URL}/users/${id}`, { is_banned }, getAuthHeaders());
       
       setSuccessMsg(`User ${is_banned ? 'banned' : 'unbanned'} successfully!`);
       fetchUsers();
@@ -144,7 +146,7 @@ export default function UserManagement() {
 
   return (
     <div className="space-y-6">
-      {/* ✅ Error & Success Messages */}
+      {/* Error & Success Messages */}
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertCircle className="h-5 w-5 flex-shrink-0" /> {error}
