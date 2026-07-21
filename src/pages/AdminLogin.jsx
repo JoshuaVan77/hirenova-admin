@@ -10,14 +10,15 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // ✅ Production API URL (Fallback if .env is not set)
-  const API_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+  // ✅ FIXED: Separate BASE_URL and API_URL to ensure '/api' is always included
+  const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+  const API_URL = `${BASE_URL}/api`; // <-- /api ကို ဒီနေရာမှာ ထည့်ပေးလိုက်ပါပြီ
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     
-    // ✅ Input Validation
+    // Input Validation
     if (!username.trim() || !password.trim()) {
       setError('Please enter both username and password');
       return;
@@ -26,7 +27,7 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      // ✅ 1. Call Backend API
+      // ✅ Now calls /api/admin/login
       const response = await axios.post(
         `${API_URL}/admin/login`,
         { username, password },
@@ -38,9 +39,9 @@ export default function AdminLogin() {
         }
       );
 
-      // ✅ 2. Check if token exists
+      // Check if token exists
       if (response.data && response.data.token) {
-        // ✅ 3. Store Token (Must match App.jsx ProtectedRoute)
+        // Store Token
         localStorage.setItem('adminToken', response.data.token);
         
         // Store Admin Info (Optional)
@@ -48,13 +49,12 @@ export default function AdminLogin() {
           localStorage.setItem('adminUser', JSON.stringify(response.data.admin));
         }
 
-        // ✅ 4. Redirect to Dashboard
+        // Redirect to Dashboard
         navigate('/admin/dashboard', { replace: true });
       } else {
         setError('Login successful, but no token received from server.');
       }
     } catch (err) {
-      // ✅ 5. Handle Errors
       console.error('Login error:', err);
       
       if (err.code === 'ECONNABORTED') {
@@ -84,7 +84,7 @@ export default function AdminLogin() {
           <p className="text-gray-400">HireNova Management System</p>
         </div>
 
-        {/* ✅ Error Message Display */}
+        {/* Error Message Display */}
         {error && (
           <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg mb-6 text-sm text-center animate-pulse">
             {error}
@@ -149,7 +149,7 @@ export default function AdminLogin() {
           </button>
         </form>
 
-        {/* ✅ Demo Credentials (Remove in production if needed) */}
+        {/* Demo Credentials */}
         <div className="mt-6 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
           <p className="text-xs text-gray-400 text-center">
             <span className="font-semibold text-gray-300">Demo Credentials:</span>
