@@ -73,15 +73,15 @@ export default function LuckyOrders() {
     try {
       setError(null);
       
-      // ✅ CRITICAL FIX: Backend က Number လိုချင်တာမို့ String ကို Number အဖြစ် ပြောင်းပေးခြင်း
+      // ✅ CRITICAL FIX: Backend validation expects 'phone', not 'user_phone'
       const payload = {
-        user_phone: formData.user_phone.trim(), // ဘေးနားက space တွေ ဖျက်ပေးမယ်
-        task_number: parseInt(formData.task_number, 10), // Number အဖြစ် ပြောင်းမယ်
-        amount: parseFloat(formData.amount), // Number အဖြစ် ပြောင်းမယ်
-        commission: parseFloat(formData.commission) // Number အဖြစ် ပြောင်းမယ်
+        phone: formData.user_phone.trim(), // Changed from 'user_phone' to 'phone'
+        task_number: parseInt(formData.task_number, 10),
+        amount: parseFloat(formData.amount),
+        commission: parseFloat(formData.commission)
       };
 
-      console.log('📤 Sending payload to backend:', payload); // Debugging အတွက်
+      console.log('📤 Sending payload to backend:', payload);
 
       await axios.post(API_URL, payload, getAuthHeaders());
       
@@ -93,9 +93,15 @@ export default function LuckyOrders() {
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (error) {
       console.error('❌ Create error:', error);
-      // ✅ Backend က ပြန်ပို့တဲ့ error message ကို တိတိကျကျ ပြသပေးမယ်
-      const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to assign lucky order. Please check the phone number and try again.';
+      
+      // ✅ Show the exact error message from the backend
+      const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to assign lucky order.';
       setError(errorMsg);
+      
+      // Log full backend response for debugging if it still fails
+      if (error.response?.data) {
+        console.error('Backend full response:', error.response.data);
+      }
     }
   };
 
