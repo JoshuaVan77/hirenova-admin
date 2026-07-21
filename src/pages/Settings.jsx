@@ -1,22 +1,30 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Save, Wallet, Settings as SettingsIcon, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
+import { Save, Wallet, Settings as SettingsIcon, AlertCircle, CheckCircle, RefreshCw, User, Lock, Key } from 'lucide-react';
 
-// ✅ 1. Dynamic API URL (Production Ready)
+// ✅ Dynamic API URL
 const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
-const API_URL = `${BASE_URL}/api/settings`;
+const API_SETTINGS_URL = `${BASE_URL}/api/admin/settings`;
+const API_PROFILE_URL = `${BASE_URL}/api/admin/update-profile`;
 
 export default function Settings() {
+  // System Settings States
   const [trc20Address, setTrc20Address] = useState('');
   const [minBalance, setMinBalance] = useState('30');
+
+  // Admin Credentials States
+  const [username, setUsername] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+
+  // UI Feedback States
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  
-  // ✅ 2. UI Feedback States
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
-  // ✅ 3. Helper function to get Auth Headers
+  // Helper function to get Auth Headers
   const getAuthHeaders = () => {
     const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
     return {
@@ -27,14 +35,25 @@ export default function Settings() {
     };
   };
 
-  // Backend ကနေ Settings တွေကို ဆွဲယူခြင်း
+  // Backend ကနေ Settings များကို ဆွဲယူခြင်း
   const fetchSettings = async () => {
     try {
       setError(null);
-      const response = await axios.get(API_URL, getAuthHeaders());
+      const response = await axios.get(API_SETTINGS_URL, getAuthHeaders());
       const settings = response.data.settings || {};
       setTrc20Address(settings.trc20_address || '');
       setMinBalance(settings.min_task_balance || '30');
+
+      // Admin Token / Info ထဲမှ လက်ရှိ Username ကို ယူယူခြင်း
+      const savedAdmin = localStorage.getItem('admin');
+      if (savedAdmin) {
+        try {
+          const adminObj = JSON.parse(savedAdmin);
+          if (adminObj.username) setUsername(adminObj.username);
+        } catch (e) {
+          console.error("Failed to parse admin stored info", e);
+        }
+      }
     } catch (error) {
       console.error('Error fetching settings:', error);
       if (error.response?.status === 401) {
@@ -51,24 +70,62 @@ export default function Settings() {
     fetchSettings();
   }, []);
 
-  // Settings ကို Save လုပ်ခြင်း
-  const handleSave = async () => {
+  // Settings & Credentials အားလုံးကို သိမ်းဆည်းခြင်း
+  const handleSaveAll = async () => {
     try {
+      setIsSaving(true);
       setError(null);
+      setSuccessMsg('');
+
+      // 1. System Settings ကို Update လုပ်ခြင်း
       await axios.put(
-        API_URL, 
+        API_SETTINGS_URL, 
         {
           trc20_address: trc20Address.trim(),
           min_task_balance: minBalance
         }, 
         getAuthHeaders()
       );
-      
-      setSuccessMsg('Settings saved successfully!');
-      setTimeout(() => setSuccessMsg(''), 3000);
+
+      // 2. Username သို့မဟုတ် Password ဖြည့်ထားပါက Admin Profile ကို Update လုပ်ခြင်း
+      if (username.trim() || newPassword) {
+        if (newPassword && !currentPassword) {
+          setError('Current password is required to set a new password.');
+          setIsSaving(false);
+          return;
+        }
+
+        const profileData = {};
+        if (username.trim()) profileData.username = username.trim();
+        if (newPassword) {
+          profileData.currentPassword = currentPassword;
+          profileData.newPassword = newPassword;
+        }
+
+        const profileRes = await axios.put(API_PROFILE_URL, profileData, getAuthHeaders());
+
+        // Username ပြောင်းသွားပါက LocalStorage တွင်ပါ အသစ်ပြန်ပြင်မည်
+        if (username.trim()) {
+          const savedAdmin = localStorage.getItem('admin');
+          if (savedAdmin) {
+            const adminObj = JSON.parse(savedAdmin);
+            adminObj.username = username.trim();
+            localStorage.setItem('admin', JSON.stringify(adminObj));
+          }
+        }
+
+        // Form Fields များ ပြန်လည် Reset လုပ်မည်
+        setCurrentPassword('');
+        setNewPassword('');
+      }
+
+      setSuccessMsg('All settings & credentials updated successfully!');
+      setTimeout(() => setSuccessMsg(''), 4000);
     } catch (error) {
       console.error('Error saving settings:', error);
       setError(error.response?.data?.message || 'Failed to save settings.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -116,7 +173,69 @@ export default function Settings() {
         </button>
       </div>
 
-      {/* Section 1: TRC20 Address */}
+      {/* ✅ Section 1: Admin Credentials (Username & Password Change) */}
+      <div className="bg-dark-card p-6 rounded-xl border border-gray-800 shadow-lg">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 bg-blue-500/20 rounded-lg">
+            <User className="h-6 w-6 text-blue-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">Admin Account Credentials</h3>
+            <p className="text-xs text-gray-400">Update your login username and password.</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {/* Username Input */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Admin Username</label>
+            <div className="relative">
+              <User className="absolute left-3 top-3.5 h-5 w-5 text-gray-500" />
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary"
+                placeholder="Enter new username"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+            {/* Current Password Input */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Current Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3.5 h-5 w-5 text-gray-500" />
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary"
+                  placeholder="Required if changing password"
+                />
+              </div>
+            </div>
+
+            {/* New Password Input */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">New Password</label>
+              <div className="relative">
+                <Key className="absolute left-3 top-3.5 h-5 w-5 text-gray-500" />
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary"
+                  placeholder="Enter new password"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Section 2: TRC20 Address */}
       <div className="bg-dark-card p-6 rounded-xl border border-gray-800 shadow-lg">
         <div className="flex items-center gap-3 mb-6">
           <div className="p-2 bg-brand-primary/20 rounded-lg">
@@ -146,7 +265,7 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Section 2: Task Rules */}
+      {/* Section 3: Task Rules */}
       <div className="bg-dark-card p-6 rounded-xl border border-gray-800 shadow-lg">
         <div className="flex items-center gap-3 mb-6">
           <div className="p-2 bg-purple-500/20 rounded-lg">
@@ -174,10 +293,11 @@ export default function Settings() {
 
       {/* Save Button */}
       <button
-        onClick={handleSave}
-        className="flex items-center gap-2 bg-brand-secondary hover:bg-brand-primary text-white px-6 py-3 rounded-lg transition-colors font-bold shadow-lg shadow-brand-primary/30"
+        onClick={handleSaveAll}
+        disabled={isSaving}
+        className="flex items-center gap-2 bg-brand-secondary hover:bg-brand-primary text-white px-6 py-3 rounded-lg transition-colors font-bold shadow-lg shadow-brand-primary/30 disabled:opacity-50"
       >
-        <Save className="h-5 w-5" /> Save All Settings
+        <Save className="h-5 w-5" /> {isSaving ? 'Saving...' : 'Save All Settings'}
       </button>
     </div>
   );
