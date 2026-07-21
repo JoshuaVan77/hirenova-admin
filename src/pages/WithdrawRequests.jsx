@@ -2,24 +2,25 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { CheckCircle, XCircle, Clock, DollarSign, Copy, RefreshCw, AlertCircle } from 'lucide-react';
 
-// ✅ 1. Dynamic API URL (Production Ready)
-const API_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+// ✅ FIXED: Add /api prefix
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+const API_URL = `${BASE_URL}/api/admin`;
 
 export default function WithdrawRequests() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
-  // ✅ 2. UI Feedback States
+  // ✅ UI Feedback States
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
-  // ✅ 3. Helper function to get Auth Headers
+  // ✅ Helper function to get Auth Headers
   const getAuthHeaders = () => {
-    const token = localStorage.getItem('adminToken');
+    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
     return {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': token ? `Bearer ${token}` : '',
         'Content-Type': 'application/json'
       }
     };
@@ -29,12 +30,14 @@ export default function WithdrawRequests() {
   const fetchRequests = async () => {
     try {
       setError(null);
-      const response = await axios.get(`${API_URL}/admin/withdraw-requests`, getAuthHeaders());
+      const response = await axios.get(`${API_URL}/withdraw-requests`, getAuthHeaders());
       setRequests(response.data.requests || []);
     } catch (error) {
       console.error('Error fetching withdraw requests:', error);
       if (error.response?.status === 401) {
         setError('Session expired. Please login again.');
+      } else if (error.response?.status === 404) {
+        setError('API endpoint not found. Please check backend.');
       } else {
         setError('Failed to load withdraw requests.');
       }
@@ -57,20 +60,18 @@ export default function WithdrawRequests() {
 
   // ၃။ Approve / Reject လုပ်ခြင်း
   const handleAction = async (id, action) => {
-    // ✅ Added confirmation for financial actions
     if (!window.confirm(`Are you sure you want to ${action} this withdraw request? This will affect the user's balance.`)) return;
     
     try {
       setError(null);
       await axios.put(
-        `${API_URL}/admin/withdraw-requests/${id}`, 
+        `${API_URL}/withdraw-requests/${id}`, 
         { status: action, admin_note: '' },
         getAuthHeaders()
       );
       
       setSuccessMsg(`Withdraw request ${action} successfully!`);
       
-      // ✅ Re-fetch to ensure UI matches database exactly
       await fetchRequests();
       
       setTimeout(() => setSuccessMsg(''), 3000);
@@ -103,7 +104,7 @@ export default function WithdrawRequests() {
 
   return (
     <div className="space-y-6">
-      {/* ✅ Error & Success Messages */}
+      {/* Error & Success Messages */}
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertCircle className="h-5 w-5 flex-shrink-0" /> {error}
