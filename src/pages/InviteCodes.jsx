@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Plus, Copy, CheckCircle, XCircle, RefreshCw, Tag, AlertCircle } from 'lucide-react';
 
-// ✅ 1. Dynamic API URL (Production Ready)
-const API_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+// ✅ 1. FIXED: Separate BASE_URL and API_URL to ensure '/api' is always included
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+const API_URL = `${BASE_URL}/api/invite-codes`; // <-- ဒီနေရာမှာ /api ကို ထည့်ပေးလိုက်ပါပြီ
 
 export default function InviteCodes() {
   const [codes, setCodes] = useState([]);
@@ -15,12 +16,12 @@ export default function InviteCodes() {
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
-  // ✅ 2. Helper function to get Auth Headers
+  // ✅ 2. Helper function to get Auth Headers (Safely handles null token)
   const getAuthHeaders = () => {
-    const token = localStorage.getItem('adminToken');
+    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
     return {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': token ? `Bearer ${token}` : '',
         'Content-Type': 'application/json'
       }
     };
@@ -29,12 +30,15 @@ export default function InviteCodes() {
   const fetchCodes = async () => {
     try {
       setError(null);
-      const response = await axios.get(`${API_URL}/invite-codes`, getAuthHeaders());
+      // ✅ Now calls /api/invite-codes
+      const response = await axios.get(API_URL, getAuthHeaders());
       setCodes(response.data.codes || []);
     } catch (error) {
       console.error('Error fetching invite codes:', error);
       if (error.response?.status === 401) {
         setError('Session expired. Please login again.');
+      } else if (error.response?.status === 404) {
+        setError('API endpoint not found. Please check backend deployment.');
       } else {
         setError('Failed to load invite codes.');
       }
@@ -49,6 +53,7 @@ export default function InviteCodes() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
+    setError(null);
     await fetchCodes();
     setTimeout(() => setIsRefreshing(false), 800);
   };
@@ -62,7 +67,7 @@ export default function InviteCodes() {
     try {
       setError(null);
       await axios.post(
-        `${API_URL}/invite-codes`, 
+        API_URL, 
         { code: newCode.trim(), max_uses: parseInt(maxUses) }, 
         getAuthHeaders()
       );
@@ -73,7 +78,7 @@ export default function InviteCodes() {
       setMaxUses('');
       fetchCodes();
       
-      setTimeout(() => setSuccessMsg(''), 3000); // Clear success message after 3s
+      setTimeout(() => setSuccessMsg(''), 3000);
     } catch (error) {
       console.error('Create error:', error);
       setError(error.response?.data?.message || 'Failed to create invite code');
@@ -84,11 +89,13 @@ export default function InviteCodes() {
     try {
       setError(null);
       await axios.put(
-        `${API_URL}/invite-codes/${id}`, 
+        `${API_URL}/${id}`, 
         { is_active: currentStatus === 1 ? 0 : 1 }, 
         getAuthHeaders()
       );
+      setSuccessMsg('Status updated successfully!');
       fetchCodes();
+      setTimeout(() => setSuccessMsg(''), 3000);
     } catch (error) {
       console.error('Toggle error:', error);
       setError('Failed to update status');
@@ -116,12 +123,12 @@ export default function InviteCodes() {
       {/* Error & Success Messages */}
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg flex items-center gap-2">
-          <AlertCircle className="h-5 w-5" /> {error}
+          <AlertCircle className="h-5 w-5 flex-shrink-0" /> {error}
         </div>
       )}
       {successMsg && (
         <div className="bg-green-500/10 border border-green-500/20 text-green-400 px-4 py-3 rounded-lg flex items-center gap-2">
-          <CheckCircle className="h-5 w-5" /> {successMsg}
+          <CheckCircle className="h-5 w-5 flex-shrink-0" /> {successMsg}
         </div>
       )}
 
@@ -180,7 +187,6 @@ export default function InviteCodes() {
                     </td>
                     <td className="px-6 py-4 text-white">{item.max_uses}</td>
                     <td className="px-6 py-4">
-                      {/* ✅ 3. Fixed: Use 'used_count' instead of 'current_uses' to match backend schema */}
                       <span className={`font-bold ${(item.used_count || 0) >= item.max_uses ? 'text-red-400' : 'text-green-400'}`}>
                         {item.used_count || 0}
                       </span>
@@ -234,7 +240,7 @@ export default function InviteCodes() {
                 <input
                   type="text"
                   value={newCode}
-                  onChange={(e) => setNewCode(e.target.value.toUpperCase().replace(/\s/g, ''))} // Remove spaces
+                  onChange={(e) => setNewCode(e.target.value.toUpperCase().replace(/\s/g, ''))}
                   className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 px-4 text-white font-mono focus:outline-none focus:ring-2 focus:ring-brand-secondary"
                   placeholder="e.g., HIRE2024"
                   maxLength={20}
