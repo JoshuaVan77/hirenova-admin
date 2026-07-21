@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Plus, Edit2, Trash2, RefreshCw, Image as ImageIcon, AlertCircle, CheckCircle, Power } from 'lucide-react';
 
-// ✅ 1. Dynamic API URL (Production Ready)
-const API_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+// ✅ FIXED: Add /api prefix
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
+const API_URL = `${BASE_URL}/api/admin`;
 
 export default function TaskManagement() {
   const [tasks, setTasks] = useState([]);
@@ -19,16 +20,16 @@ export default function TaskManagement() {
     commission: ''
   });
 
-  // ✅ 2. UI Feedback States
+  // ✅ UI Feedback States
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
-  // ✅ 3. Helper function to get Auth Headers
+  // ✅ Helper function to get Auth Headers
   const getAuthHeaders = () => {
-    const token = localStorage.getItem('adminToken');
+    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
     return {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': token ? `Bearer ${token}` : '',
         'Content-Type': 'application/json'
       }
     };
@@ -37,12 +38,14 @@ export default function TaskManagement() {
   const fetchTasks = async () => {
     try {
       setError(null);
-      const response = await axios.get(`${API_URL}/admin/tasks`, getAuthHeaders());
+      const response = await axios.get(`${API_URL}/tasks`, getAuthHeaders());
       setTasks(response.data.tasks || []);
     } catch (error) {
       console.error('Error fetching tasks:', error);
       if (error.response?.status === 401) {
         setError('Session expired. Please login again.');
+      } else if (error.response?.status === 404) {
+        setError('API endpoint not found. Please check backend.');
       } else {
         setError('Failed to load tasks.');
       }
@@ -90,10 +93,10 @@ export default function TaskManagement() {
     try {
       setError(null);
       if (editingTask) {
-        await axios.put(`${API_URL}/admin/tasks/${editingTask.id}`, formData, getAuthHeaders());
+        await axios.put(`${API_URL}/tasks/${editingTask.id}`, formData, getAuthHeaders());
         setSuccessMsg('Task updated successfully!');
       } else {
-        await axios.post(`${API_URL}/admin/tasks`, formData, getAuthHeaders());
+        await axios.post(`${API_URL}/tasks`, formData, getAuthHeaders());
         setSuccessMsg('Task created successfully!');
       }
       setShowModal(false);
@@ -109,7 +112,7 @@ export default function TaskManagement() {
     if (!window.confirm('Are you sure you want to delete this task? This action cannot be undone.')) return;
     try {
       setError(null);
-      await axios.delete(`${API_URL}/admin/tasks/${id}`, getAuthHeaders());
+      await axios.delete(`${API_URL}/tasks/${id}`, getAuthHeaders());
       setSuccessMsg('Task deleted successfully!');
       fetchTasks();
       setTimeout(() => setSuccessMsg(''), 3000);
@@ -119,12 +122,12 @@ export default function TaskManagement() {
     }
   };
 
-  // ✅ 4. Added Toggle Status Function (Matches Backend)
+  // ✅ Added Toggle Status Function (Matches Backend)
   const handleToggleStatus = async (id, currentStatus) => {
     try {
       setError(null);
       await axios.patch(
-        `${API_URL}/admin/tasks/${id}/status`, 
+        `${API_URL}/tasks/${id}/status`, 
         { is_active: currentStatus === 1 ? 0 : 1 }, 
         getAuthHeaders()
       );
@@ -149,7 +152,7 @@ export default function TaskManagement() {
 
   return (
     <div className="space-y-6">
-      {/* ✅ Error & Success Messages */}
+      {/* Error & Success Messages */}
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertCircle className="h-5 w-5 flex-shrink-0" /> {error}
@@ -242,7 +245,7 @@ export default function TaskManagement() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {/* ✅ Toggle Status Button */}
+                        {/* Toggle Status Button */}
                         <button 
                           onClick={() => handleToggleStatus(task.id, task.is_active)}
                           className={`p-2 rounded-lg transition-colors ${
