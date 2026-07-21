@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Plus, XCircle, RefreshCw, Target, DollarSign, Phone, AlertCircle, CheckCircle } from 'lucide-react';
 
-// ✅ FIXED: Separate BASE_URL and API_URL to ensure '/api' is always included
+// ✅ Base API setup
 const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
 const API_URL = `${BASE_URL}/api/admin/lucky-orders`;
 
-// ✅ Helper function: Request တိုင်းမှာ Token ပါအောင် ထည့်ပေးမယ့် Function
+// ✅ Authorization Token Header Helper
 const getAuthHeaders = () => {
   const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
   return {
@@ -21,9 +21,10 @@ export default function LuckyOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showModal, setShowModal] = useState(false);
   
-  // ✅ UI Feedback States
+  // UI Notifications State
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -34,16 +35,17 @@ export default function LuckyOrders() {
     commission: ''
   });
 
+  // Fetch Lucky Orders from API
   const fetchOrders = async () => {
     try {
       setError(null);
       const response = await axios.get(API_URL, getAuthHeaders());
       setOrders(response.data.orders || []);
-    } catch (error) {
-      console.error('Error fetching lucky orders:', error);
-      if (error.response?.status === 401 || error.response?.status === 403) {
+    } catch (err) {
+      console.error('Error fetching lucky orders:', err);
+      if (err.response?.status === 401 || err.response?.status === 403) {
         setError('Session expired. Please login again.');
-      } else if (error.response?.status === 404) {
+      } else if (err.response?.status === 404) {
         setError('API endpoint not found. Please check backend deployment.');
       } else {
         setError('Failed to load lucky orders.');
@@ -69,21 +71,34 @@ export default function LuckyOrders() {
       setError('Please fill in all fields');
       return;
     }
-    
+
+    const cleanPhone = formData.user_phone.trim();
+    const taskNum = parseInt(formData.task_number, 10);
+    const amt = parseFloat(formData.amount);
+    const comm = parseFloat(formData.commission);
+
+    if (isNaN(taskNum) || isNaN(amt) || isNaN(comm)) {
+      setError('Task number, amount, and commission must be valid numbers.');
+      return;
+    }
+
+    // ✅ Sends both 'phone' and 'user_phone' to handle backend key naming variations
+    const payload = {
+      phone: cleanPhone,
+      user_phone: cleanPhone,
+      task_number: taskNum,
+      amount: amt,
+      commission: comm
+    };
+
+    console.log('📤 Sending payload to backend:', payload);
+
     try {
+      setIsSubmitting(true);
       setError(null);
       
-      // ✅ CRITICAL FIX: Backend validation expects 'phone', not 'user_phone'
-      const payload = {
-        phone: formData.user_phone.trim(), // Changed from 'user_phone' to 'phone'
-        task_number: parseInt(formData.task_number, 10),
-        amount: parseFloat(formData.amount),
-        commission: parseFloat(formData.commission)
-      };
-
-      console.log('📤 Sending payload to backend:', payload);
-
-      await axios.post(API_URL, payload, getAuthHeaders());
+      const response = await axios.post(API_URL, payload, getAuthHeaders());
+      console.log('📥 Backend Response:', response.data);
       
       setSuccessMsg('Lucky order assigned successfully!');
       setShowModal(false);
@@ -91,17 +106,13 @@ export default function LuckyOrders() {
       fetchOrders();
       
       setTimeout(() => setSuccessMsg(''), 3000);
-    } catch (error) {
-      console.error('❌ Create error:', error);
-      
-      // ✅ Show the exact error message from the backend
-      const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to assign lucky order.';
+    } catch (err) {
+      console.error('❌ Create error:', err);
+      console.error('❌ Error response data:', err.response?.data);
+      const errorMsg = err.response?.data?.message || err.response?.data?.error || 'Failed to assign lucky order. Please check the phone number.';
       setError(errorMsg);
-      
-      // Log full backend response for debugging if it still fails
-      if (error.response?.data) {
-        console.error('Backend full response:', error.response.data);
-      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -115,9 +126,9 @@ export default function LuckyOrders() {
       fetchOrders();
       
       setTimeout(() => setSuccessMsg(''), 3000);
-    } catch (error) {
-      console.error('Cancel error:', error);
-      setError(error.response?.data?.message || 'Failed to cancel lucky order.');
+    } catch (err) {
+      console.error('Cancel error:', err);
+      setError(err.response?.data?.message || 'Failed to cancel lucky order.');
     }
   };
 
@@ -133,7 +144,7 @@ export default function LuckyOrders() {
 
   return (
     <div className="space-y-6">
-      {/* Error & Success Messages */}
+      {/* Notifications */}
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertCircle className="h-5 w-5 flex-shrink-0" /> {error}
@@ -158,7 +169,7 @@ export default function LuckyOrders() {
             <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
           </button>
           <button 
-            onClick={() => { setError(''); setShowModal(true); }}
+            onClick={() => { setError(null); setShowModal(true); }}
             className="flex items-center gap-2 bg-brand-secondary hover:bg-brand-primary text-white px-4 py-2 rounded-lg transition-colors font-medium"
           >
             <Plus className="h-4 w-4" /> Assign Lucky Order
@@ -166,7 +177,7 @@ export default function LuckyOrders() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Orders Table */}
       <div className="bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left text-gray-400">
@@ -192,7 +203,9 @@ export default function LuckyOrders() {
                   <tr key={order.id} className="hover:bg-gray-800/30 transition-colors">
                     <td className="px-6 py-4">
                       <div className="font-medium text-white">ID: {order.user_id || 'N/A'}</div>
-                      <div className="text-xs text-gray-500">{order.full_name || 'Unknown'} ({order.phone || 'No phone'})</div>
+                      <div className="text-xs text-gray-500">
+                        {order.full_name || 'Unknown'} ({order.phone || order.user_phone || 'No phone'})
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <span className="bg-blue-500/10 text-blue-400 px-2 py-1 rounded text-xs font-bold">
@@ -235,11 +248,16 @@ export default function LuckyOrders() {
       {showModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-dark-card rounded-2xl p-6 max-w-md w-full border border-gray-700 shadow-2xl">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-brand-primary/20 rounded-lg">
-                <Target className="h-6 w-6 text-brand-secondary" />
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-brand-primary/20 rounded-lg">
+                  <Target className="h-6 w-6 text-brand-secondary" />
+                </div>
+                <h3 className="text-xl font-bold text-white">Assign Lucky Order</h3>
               </div>
-              <h3 className="text-xl font-bold text-white">Assign Lucky Order</h3>
+              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-white transition-colors">
+                <XCircle className="h-6 w-6" />
+              </button>
             </div>
             
             <div className="space-y-4 mb-6">
@@ -252,63 +270,85 @@ export default function LuckyOrders() {
                   value={formData.user_phone}
                   onChange={(e) => setFormData({...formData, user_phone: e.target.value})}
                   className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary"
-                  placeholder="e.g., +959123456789"
+                  placeholder="e.g., 09123456789"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">Enter the exact phone number registered by the user (include country code)</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter the exact phone number registered by the user
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Task Number (1 - 40)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="40"
+                  value={formData.task_number}
+                  onChange={(e) => setFormData({...formData, task_number: e.target.value})}
+                  className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary"
+                  placeholder="e.g., 15"
+                  required
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Task Number (1-40)</label>
-                  <input
-                    type="number"
-                    value={formData.task_number}
-                    onChange={(e) => setFormData({...formData, task_number: e.target.value})}
-                    className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary"
-                    min="1" max="40"
-                    placeholder="e.g., 15"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-1">
                     <DollarSign className="h-4 w-4 text-red-400" /> Required Top-up
                   </label>
                   <input
                     type="number"
+                    step="0.01"
                     value={formData.amount}
                     onChange={(e) => setFormData({...formData, amount: e.target.value})}
                     className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary"
-                    placeholder="e.g., 100"
+                    placeholder="100.00"
+                    required
                   />
                 </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-green-400" /> Commission Reward
-                </label>
-                <input
-                  type="number"
-                  value={formData.commission}
-                  onChange={(e) => setFormData({...formData, commission: e.target.value})}
-                  className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary"
-                  placeholder="e.g., 50"
-                />
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-1">
+                    <DollarSign className="h-4 w-4 text-green-400" /> Commission Reward
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.commission}
+                    onChange={(e) => setFormData({...formData, commission: e.target.value})}
+                    className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary"
+                    placeholder="20.00"
+                    required
+                  />
+                </div>
               </div>
             </div>
 
             <div className="flex gap-3">
-              <button 
-                onClick={() => { setShowModal(false); setError(''); }} 
-                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition-colors"
+              <button
+                type="button"
+                onClick={() => { setShowModal(false); setError(null); }}
+                disabled={isSubmitting}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 rounded-lg font-medium transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
-              <button 
-                onClick={handleCreate} 
-                className="flex-1 bg-brand-secondary hover:bg-brand-primary text-white font-bold py-3 rounded-lg transition-all"
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={isSubmitting}
+                className="flex-1 bg-brand-secondary hover:bg-brand-primary text-white py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                Assign Order
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" /> Assigning...
+                  </>
+                ) : (
+                  'Assign Order'
+                )}
               </button>
             </div>
           </div>
