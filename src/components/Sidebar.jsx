@@ -22,8 +22,18 @@ export default function Sidebar() {
     { path: '/admin/settings', icon: Settings, label: 'Settings' },
   ];
 
+  // ✅ 1. Secure Logout Function
+  const handleLogout = () => {
+    // Clear all authentication data from localStorage
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('token'); // Fallback
+    localStorage.removeItem('adminUser');
+    
+    // Navigate to login and prevent going "back" to the dashboard
+    navigate('/admin/login', { replace: true });
+  };
+
   return (
-    // ✅ 'hidden md:flex' ကို ဖျက်ပြီး 'flex-shrink-0' ထည့်ထားပါတယ်
     <aside className="w-64 bg-dark-sidebar border-r border-gray-800 flex flex-col flex-shrink-0 h-screen">
       <div className="p-6 border-b border-gray-800">
         <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-secondary to-brand-accent bg-clip-text text-transparent">
@@ -41,6 +51,8 @@ export default function Sidebar() {
             <button
               key={item.path}
               onClick={() => navigate(item.path)}
+              // ✅ 2. Added aria-current for better accessibility
+              aria-current={isActive ? 'page' : undefined}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors text-sm font-medium ${
                 isActive 
                   ? 'bg-brand-primary/20 text-brand-secondary border border-brand-secondary/30' 
@@ -52,8 +64,9 @@ export default function Sidebar() {
                 <span>{item.label}</span>
               </div>
               
+              {/* ✅ 3. Dynamic Unread Badge for Chat */}
               {item.path === '/admin/chat' && unreadCount > 0 && (
-                <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center animate-pulse">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               )}
@@ -63,8 +76,9 @@ export default function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-gray-800">
+        {/* ✅ 4. Use the secure handleLogout function */}
         <button 
-          onClick={() => navigate('/admin/login')}
+          onClick={handleLogout}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors text-sm font-medium"
         >
           <LogOut className="h-5 w-5" />
