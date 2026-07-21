@@ -4,7 +4,7 @@ import { Plus, XCircle, RefreshCw, Target, DollarSign, Phone, AlertCircle, Check
 
 // ✅ FIXED: Separate BASE_URL and API_URL to ensure '/api' is always included
 const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
-const API_URL = `${BASE_URL}/api/admin/lucky-orders`; // <-- ဒီနေရာမှာ /api ကို ထည့်ပေးလိုက်ပါပြီ
+const API_URL = `${BASE_URL}/api/admin/lucky-orders`;
 
 // ✅ Helper function: Request တိုင်းမှာ Token ပါအောင် ထည့်ပေးမယ့် Function
 const getAuthHeaders = () => {
@@ -27,7 +27,6 @@ export default function LuckyOrders() {
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
-  // ✅ Reverted to user_phone to match Backend Controller logic
   const [formData, setFormData] = useState({
     user_phone: '',
     task_number: '',
@@ -38,7 +37,6 @@ export default function LuckyOrders() {
   const fetchOrders = async () => {
     try {
       setError(null);
-      // ✅ Now calls /api/admin/lucky-orders
       const response = await axios.get(API_URL, getAuthHeaders());
       setOrders(response.data.orders || []);
     } catch (error) {
@@ -71,9 +69,21 @@ export default function LuckyOrders() {
       setError('Please fill in all fields');
       return;
     }
+    
     try {
       setError(null);
-      await axios.post(API_URL, formData, getAuthHeaders());
+      
+      // ✅ CRITICAL FIX: Backend က Number လိုချင်တာမို့ String ကို Number အဖြစ် ပြောင်းပေးခြင်း
+      const payload = {
+        user_phone: formData.user_phone.trim(), // ဘေးနားက space တွေ ဖျက်ပေးမယ်
+        task_number: parseInt(formData.task_number, 10), // Number အဖြစ် ပြောင်းမယ်
+        amount: parseFloat(formData.amount), // Number အဖြစ် ပြောင်းမယ်
+        commission: parseFloat(formData.commission) // Number အဖြစ် ပြောင်းမယ်
+      };
+
+      console.log('📤 Sending payload to backend:', payload); // Debugging အတွက်
+
+      await axios.post(API_URL, payload, getAuthHeaders());
       
       setSuccessMsg('Lucky order assigned successfully!');
       setShowModal(false);
@@ -82,8 +92,10 @@ export default function LuckyOrders() {
       
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (error) {
-      console.error('Create error:', error);
-      setError(error.response?.data?.message || 'Failed to assign lucky order.');
+      console.error('❌ Create error:', error);
+      // ✅ Backend က ပြန်ပို့တဲ့ error message ကို တိတိကျကျ ပြသပေးမယ်
+      const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to assign lucky order. Please check the phone number and try again.';
+      setError(errorMsg);
     }
   };
 
@@ -225,7 +237,6 @@ export default function LuckyOrders() {
             </div>
             
             <div className="space-y-4 mb-6">
-              {/* Reverted to User Phone to match Backend Controller */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
                   <Phone className="h-4 w-4" /> User Phone Number
@@ -235,10 +246,10 @@ export default function LuckyOrders() {
                   value={formData.user_phone}
                   onChange={(e) => setFormData({...formData, user_phone: e.target.value})}
                   className="w-full bg-dark-input border border-gray-700 rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-secondary"
-                  placeholder="e.g., 09123456789"
+                  placeholder="e.g., +959123456789"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">Enter the exact phone number registered by the user</p>
+                <p className="text-xs text-gray-500 mt-1">Enter the exact phone number registered by the user (include country code)</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
