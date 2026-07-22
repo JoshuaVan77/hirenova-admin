@@ -3,13 +3,11 @@ import axios from 'axios';
 import { Send, MessageCircle, User, RefreshCw, AlertCircle } from 'lucide-react';
 import { useChat } from '../context/ChatContext';
 
-// ✅ 1. Dynamic URLs (Production Ready)
-// VITE_API_URL တွင် "/api" မပါဝင်ရပါ။ (ဥပမာ: https://...railway.app)
+// ✅ Dynamic URLs
 const BASE_URL = import.meta.env.VITE_API_URL || 'https://hirenova-backend-production-32b1.up.railway.app';
 const API_URL = `${BASE_URL}/api/chat`;
 
 export default function LiveChat() {
-  // ✅ ChatContext ထဲက socket နဲ့ functions တွေကို တိုက်ရိုက်ယူသုံးပါ
   const { resetUnreadCount, socket } = useChat();
   
   const [conversations, setConversations] = useState([]);
@@ -20,7 +18,7 @@ export default function LiveChat() {
   const [error, setError] = useState(null);
   const messagesEndRef = useRef(null);
 
-  // ✅ 2. Helper function to get Auth Headers
+  // ✅ Helper function to get Auth Headers
   const getAuthHeaders = () => {
     const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
     return {
@@ -29,6 +27,15 @@ export default function LiveChat() {
         'Content-Type': 'application/json'
       }
     };
+  };
+
+  // ✅ Helper function to format Image URL
+  const getFullImageUrl = (img) => {
+    if (!img) return null;
+    if (img.startsWith('http://') || img.startsWith('https://')) return img;
+    const cleanBase = BASE_URL.endsWith('/') ? BASE_URL.slice(0, -1) : BASE_URL;
+    const cleanImg = img.startsWith('/') ? img : `/${img}`;
+    return `${cleanBase}${cleanImg}`;
   };
 
   const fetchConversations = async () => {
@@ -61,8 +68,7 @@ export default function LiveChat() {
   useEffect(() => {
     fetchConversations();
 
-    // ✅ Socket listener ကို ChatContext မှာ already ရှိနေပေမယ့်, 
-    // specific conversation အတွက် messages update လုပ်ဖို့ ဒီမှာ ထပ်ထည့်ထားပါတယ်
+    // ✅ Socket Listener မှာ Image Field ပါအောင် ထည့်သွင်းထားသည်
     const handleNewMessage = (data) => {
       fetchConversations(); 
       if (selectedConversation && selectedConversation.id === data.userId) {
@@ -72,6 +78,7 @@ export default function LiveChat() {
             id: data.message.id,
             sender_type: data.message.sender_type,
             content: data.message.content,
+            image_url: data.message.image_url || data.message.imageUrl || data.message.image || null,
             created_at: data.message.created_at
           }];
         });
@@ -208,16 +215,37 @@ export default function LiveChat() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {messages.map((msg) => (
-                  <div key={msg.id} className={`flex ${msg.sender_type === 'admin' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[70%] rounded-xl px-3 py-2 ${msg.sender_type === 'admin' ? 'bg-brand-primary text-white' : 'bg-gray-800 text-gray-200'}`}>
-                      {msg.content && <p className="text-sm">{msg.content}</p>}
-                      <p className="text-[10px] mt-1 text-right opacity-70">
-                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
+                {messages.map((msg) => {
+                  // ✅ Database or Socket ထဲက Image Property မျိုးစုံကို စစ်ထုတ်ခြင်း
+                  const rawImg = msg.image_url || msg.imageUrl || msg.image || msg.file_url;
+                  const imgUrl = getFullImageUrl(rawImg);
+
+                  return (
+                    <div key={msg.id || Math.random()} className={`flex ${msg.sender_type === 'admin' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[70%] rounded-xl px-3 py-2 ${msg.sender_type === 'admin' ? 'bg-brand-primary text-white' : 'bg-gray-800 text-gray-200'}`}>
+                        
+                        {/* ✅ စာသားရှိပါက ပြမည် */}
+                        {msg.content && <p className="text-sm leading-relaxed mb-1">{msg.content}</p>}
+                        
+                        {/* ✅ ပုံရှိပါက Image Tag ဖြင့် Render ပြုလုပ်မည် */}
+                        {imgUrl && (
+                          <div className="mt-2 mb-1">
+                            <img 
+                              src={imgUrl} 
+                              alt="Attachment" 
+                              className="max-w-full max-h-60 rounded-lg object-cover cursor-pointer border border-gray-700/50 hover:opacity-90 transition-opacity"
+                              onClick={() => window.open(imgUrl, '_blank')}
+                            />
+                          </div>
+                        )}
+
+                        <p className="text-[10px] mt-1 text-right opacity-70">
+                          {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 <div ref={messagesEndRef} />
               </div>
 
